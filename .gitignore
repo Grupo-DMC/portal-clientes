@@ -1,0 +1,202 @@
+# =====================================================
+# SECRETOS Y CREDENCIALES (nunca subir)
+# =====================================================
+.env
+.env.*
+!.env.example
+!.env.test.example
+!.env.sample
+*.env
+.envrc
+.dev.vars
+secrets/
+.secrets/
+secret.*
+secrets.*
+credentials.*
+*credentials*.json
+*secret*.json
+service-account*.json
+serviceAccount*.json
+firebase-adminsdk*.json
+google-services.json
+GoogleService-Info.plist
+client_secret*.json
+auth.json
+.npmrc
+.yarnrc.yml
+.netrc
+.htpasswd
+.aws/
+.azure/
+.gcloud/
+.ssh/
+
+# Llaves y certificados
+*.pem
+*.key
+*.p12
+*.pfx
+*.p8
+*.crt
+*.cer
+*.der
+*.jks
+*.keystore
+*.ppk
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.gpg
+*.asc
+*.kdbx
+
+# Terraform / infraestructura
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+
+# =====================================================
+# BASES DE DATOS Y DATOS DE CLIENTES
+# =====================================================
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.sql
+!supabase/migrations/*.sql
+*.dump
+*.bak
+*.backup
+dump/
+backups/
+data/
+exports/
+uploads/
+*.csv
+*.xlsx
+*.xls
+*.tsv
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+supabase/seed.local.sql
+
+# =====================================================
+# DEPENDENCIAS
+# =====================================================
+node_modules/
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+.pnpm-store/
+jspm_packages/
+bower_components/
+
+# =====================================================
+# NEXT.JS / BUILD
+# =====================================================
+.next/
+out/
+build/
+dist/
+.turbo/
+.swc/
+next-env.d.ts
+*.tsbuildinfo
+
+# =====================================================
+# TESTS Y COBERTURA
+# =====================================================
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+cypress/videos/
+cypress/screenshots/
+
+# =====================================================
+# LOGS Y DEBUG
+# =====================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+report.*.json
+
+# =====================================================
+# DESPLIEGUE
+# =====================================================
+.vercel
+.netlify
+.firebase/
+.wrangler/
+.serverless/
+.sst/
+.amplify/
+
+# =====================================================
+# CACHES
+# =====================================================
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.prettiercache
+*.tmp
+*.temp
+.sass-cache/
+.npm
+.node_repl_history
+*.tgz
+
+# =====================================================
+# EDITORES Y SISTEMA OPERATIVO
+# =====================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*~
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.sublime-workspace
+*.code-workspace
+
+# =====================================================
+# HERRAMIENTAS DE IA / LOCALES
+# =====================================================
+.claude/settings.local.json
+.claude/*.local.*
+CLAUDE.local.md
+.impeccable/*.cache.json
+.cursor/
+.aider*
+.continue/
+
+# =====================================================
+# ARCHIVOS COMPRIMIDOS / PESADOS
+# =====================================================
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
