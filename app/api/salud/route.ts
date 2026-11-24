@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { consulta } from "@/lib/data/sql";
+import { consulta, consultaDeCliente } from "@/lib/data/sql";
+import { MAPEO } from "@/lib/data/portal/mapeo";
 import { estadoDelMapeo } from "@/lib/data/portal/db";
 import { describirDestinoSql } from "@/lib/db/config";
 import { enProduccion, env, exigirConexionSql, fuenteDeDatos, hayConexionSql } from "@/lib/env";
@@ -29,6 +30,9 @@ function autorizado(req: NextRequest, esperado: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
+
+/** id de cliente imposible, solo para probar el session_context (no lee datos). */
+const SONDA_CLIENTE = 9_007_199_254_740_991;
 
 interface FilaSalud {
   ok: number;
@@ -78,6 +82,37 @@ export async function GET(req: NextRequest) {
               HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'DELETE') AS puedeBorrar`
     );
     const puedeEscribir = Boolean(fila?.puedeInsertar || fila?.puedeActualizar || fila?.puedeBorrar);
+
+    // Permisos por esquema: el portal lee `portal` y NO debe poder leer las tablas.
+    const [esquemas] = await consulta<{
+      leePortal: number | null;
+      leeClientes: number | null;
+      leeTecnico: number | null;
+      leeSeguridad: number | null;
+      porDefecto: string | null;
+    }>(
+      `SELECT HAS_PERMS_BY_NAME('portal', 'SCHEMA', 'SELECT') AS leePortal,
+              HAS_PERMS_BY_NAME('clientes', 'SCHEMA', 'SELECT') AS leeClientes,
+              HAS_PERMS_BY_NAME('tecnico', 'SCHEMA', 'SELECT') AS leeTecnico,
+              HAS_PERMS_BY_NAME('seguridad', 'SCHEMA', 'SELECT') AS leeSeguridad,
+              SCHEMA_NAME() AS porDefecto`
+    );
+
+    // session_context: se fija en la misma petición y no queda pegado a la conexión.
+    const [conContexto] = await consultaDeCliente<{ ctx: string | null }>(
+      SONDA_CLIENTE,
+      `SELECT CAST(CAST(SESSION_CONTEXT(N'cliente_id') AS bigint) AS varchar(20)) AS ctx`
+    );
+    const [sinContexto] = await consulta<{ ctx: string | null }>(
+      `SELECT CAST(CAST(SESSION_CONTEXT(N'cliente_id') AS bigint) AS varchar(20)) AS ctx`
+    );
+
+    // Qué vistas del mapeo existen ya en la base.
+    const vistas = await consulta<{ nombre: string }>(
+      `SELECT CONCAT(SCHEMA_NAME(schema_id), '.', name) AS nombre FROM sys.views WHERE schema_id = SCHEMA_ID('portal')`
+    );
+    const existentes = new Set(vistas.map((v) => v.nombre.toLowerCase()));
+    const esperadas = [...new Set(Object.values(MAPEO).flatMap((m) => (m ? [m.tabla.toLowerCase()] : [])))];
     if (puedeEscribir) log.warn("/api/salud", { aviso: "la cuenta SQL tiene permisos de escritura; el portal debería usar una de solo lectura" });
 
     return NextResponse.json({
@@ -94,6 +129,21 @@ export async function GET(req: NextRequest) {
         ...(puedeEscribir
           ? { aviso: "La cuenta SQL puede escribir. Usa una cuenta con solo db_datareader (ver docs/DATOS_PENDIENTES.md)." }
           : {}),
+      },
+      esquemas: {
+        porDefecto: esquemas?.porDefecto ?? null,
+        leePortal: Boolean(esquemas?.leePortal),
+        leeClientes: Boolean(esquemas?.leeClientes),
+        leeTecnico: Boolean(esquemas?.leeTecnico),
+        leeSeguridad: Boolean(esquemas?.leeSeguridad),
+      },
+      contextoSesion: {
+        seFija: conContexto?.ctx === String(SONDA_CLIENTE),
+        quedaEnLaConexion: sinContexto?.ctx != null,
+      },
+      vistas: {
+        existentes: [...existentes],
+        faltan: esperadas.filter((v) => !existentes.has(v)),
       },
       mapeo: {
         confirmadas: mapeo.confirmadas,

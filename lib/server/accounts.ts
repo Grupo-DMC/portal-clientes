@@ -19,6 +19,8 @@ export type Acct = {
   perfil?: "admin" | "zona" | "marca";
   /** cliente al que pertenece (solo cliente) */
   clienteId?: string;
+  /** El mismo cliente en la base (clientes.cliente.id → cliente_id de portal.v_*). Necesario con DATA_SOURCE=db. */
+  clienteIdBd?: number;
 };
 
 export const DMC_DOMAIN = "grupodmc.cl";

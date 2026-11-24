@@ -23,7 +23,13 @@ export default async function PortalLayout({ children }: { children: React.React
 
   let datos: PortalDatos;
   try {
-    datos = await cargarPortal({ email: acct.email, clienteId: acct.clienteId });
+    datos = await cargarPortal({
+      email: acct.email,
+      clienteId: acct.clienteId,
+      clienteIdBd: acct.clienteIdBd ?? null,
+      nombre: acct.name,
+      rol: acct.role,
+    });
   } catch (err) {
     if (err instanceof DatosPendientesError) {
       log.warn("portal.layout", { aviso: "mapeo de datos pendiente", secciones: err.secciones });

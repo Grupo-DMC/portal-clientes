@@ -41,6 +41,42 @@ export function resumirVisitas(fechasISO: string[], hoy = new Date()): VisitasRe
   return { anio: base.getFullYear(), mes, semana, porMes, mesEnCurso: base.getMonth() };
 }
 
+/** 'YYYY-MM-DD' → 'DD-MM-YYYY'. */
+export const isoADmy = (iso: string) => iso.split("-").reverse().join("-");
+
+/**
+ * Garantías del cliente a partir del vencimiento de cada sucursal
+ * (portal.v_sucursal.garantia_vence). Reglas provisorias [VERIFICAR]:
+ * - «vigente hasta»: el vencimiento más lejano entre las sucursales.
+ * - «por vencer»: las que vencen entre hoy y `dias` días más.
+ */
+export function resumirGarantias(
+  vencimientosISO: (string | null)[],
+  dias: number,
+  hoy = new Date()
+): { porVencer: number; planVigenteHasta: string | null } {
+  const base = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  let porVencer = 0;
+  let maximo: string | null = null;
+  for (const texto of vencimientosISO) {
+    const f = texto ? deISO(texto) : null;
+    if (!f || !texto) continue;
+    const restantes = (f.getTime() - base.getTime()) / DIA;
+    if (restantes >= 0 && restantes <= dias) porVencer++;
+    if (!maximo || texto > maximo) maximo = texto;
+  }
+  return { porVencer, planVigenteHasta: maximo ? isoADmy(maximo) : null };
+}
+
+/** La garantía de una sucursal está vigente si vence hoy o después. */
+export function garantiaVigente(vencimientoISO: string | null, hoy = new Date()): boolean {
+  const f = vencimientoISO ? deISO(vencimientoISO) : null;
+  return !!f && f >= new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+}
+
+/** Estado de la sucursal: con problemas abiertos = «con observaciones». [VERIFICAR] */
+export const estadoSucursal = (problemasAbiertos: number | null) => ((problemasAbiertos ?? 0) > 0 ? "observaciones" : "operativa");
+
 /** Tickets abiertos por sucursal (por nombre), para la columna «Tickets». */
 export function ticketsPorSucursal(tickets: Pick<TicketPortalDto, "sucursal" | "estado">[], abierto: string): Map<string, number> {
   const mapa = new Map<string, number>();

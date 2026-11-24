@@ -243,6 +243,11 @@ export interface DespachoDto {
 export interface ContextoPortal {
   /** Correo de la cuenta del portal (id de la sesión). */
   email: string;
-  /** Cliente al que pertenece la cuenta. */
+  /** Cliente al que pertenece la cuenta, en los datos de ejemplo (mock). */
   clienteId: string;
+  /** El mismo cliente en la base (clientes.cliente.id, expuesto como cliente_id en portal.v_*). null = sin vincular. */
+  clienteIdBd: number | null;
+  /** Nombre y rol de la cuenta: la base del portal no expone usuarios (perfil sale de la sesión). */
+  nombre: string;
+  rol: string;
 }

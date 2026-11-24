@@ -77,7 +77,7 @@ export default function DashboardView() {
         <div className="kpi">
           <span className="kpi-label"><Icon name="shieldOk" />Garantías por vencer</span>
           <span className="kpi-value num">{garantias.porVencer}</span>
-          <span className="kpi-note">Plan vigente hasta el <span className="nw">{garantias.planVigenteHasta}</span></span>
+          <span className="kpi-note">{garantias.planVigenteHasta ? <>Plan vigente hasta el <span className="nw">{garantias.planVigenteHasta}</span></> : 'Sin plan de garantía registrado'}</span>
         </div>
         <div className="kpi">
           <div className="kpi-head">

@@ -73,7 +73,59 @@ export function ident(nombre: string): string {
 
 export type Parametro = [nombre: string, tipo: sql.ISqlType | (() => sql.ISqlType), valor: unknown];
 
-/** Ejecuta una consulta sin parámetros y devuelve las filas tipadas. */
+/**
+ * El portal solo lee vistas del esquema `portal` (portal.v_*). La cuenta SQL no
+ * tiene permiso sobre las tablas (`clientes`, `tecnico`, `seguridad`; antes `dmc`);
+ * esto lo deja escrito también en la app.
+ */
+export function asegurarSoloPortal(texto: string): void {
+  const sinTextos = texto.replace(/'(?:[^']|'')*'/g, "''");
+  const ajeno = sinTextos.match(/\[?\b(clientes|tecnico|seguridad|dmc|sys|INFORMATION_SCHEMA)\]?\s*\.\s*\[?[A-Za-z_]/i);
+  if (ajeno) throw new SentenciaNoPermitida(`referencia fuera del esquema portal («${ajeno[0]}»)`);
+  const objetos = [...sinTextos.matchAll(/\b(?:FROM|JOIN|APPLY)\s+(\[?[A-Za-z_][\w]*\]?(?:\s*\.\s*\[?[A-Za-z_][\w]*\]?)?)/gi)].map((m) =>
+    m[1].replace(/[\[\]\s]/g, "")
+  );
+  for (const objeto of objetos) {
+    if (!/^portal\.v_\w+$/i.test(objeto)) throw new SentenciaNoPermitida(`solo se leen vistas portal.v_* («${objeto}»)`);
+  }
+}
+
+/** id de cliente utilizable: entero positivo seguro. Sin él no se consulta nada. */
+export function idCliente(valor: unknown): number {
+  const n = typeof valor === "string" && valor.trim() !== "" ? Number(valor) : valor;
+  if (typeof n !== "number" || !Number.isSafeInteger(n) || n <= 0) {
+    throw new Error("No hay un cliente_id válido para la sesión: no se consulta la base sin filtrar por cliente.");
+  }
+  return n;
+}
+
+/**
+ * Consulta de datos del portal, acotada al cliente de la sesión.
+ *
+ * En la MISMA petición (mismo lote, misma conexión) primero fija el cliente con
+ * sp_set_session_context (@read_only = 1, para el Row-Level Security de la
+ * base) y luego corre el SELECT. Nunca se asume que la conexión ya trae el
+ * contexto: el pool la entrega reiniciada (lib/db/pool.ts), así que cada
+ * consulta lo fija de nuevo. Si no hay RLS en la base, no estorba.
+ *
+ * Además, el SELECT debe filtrar por cliente_id él mismo (lo hace lib/data/portal/db.ts).
+ */
+export async function consultaDeCliente<T>(clienteId: number, texto: string, params: Parametro[] = []): Promise<T[]> {
+  const id = idCliente(clienteId);
+  asegurarSoloLectura(texto);
+  asegurarSoloPortal(texto);
+  if (params.some(([nombre]) => nombre === "__cliente_id")) throw new Error("El parámetro __cliente_id está reservado.");
+  const pool = await getPool();
+  const req = pool.request();
+  req.input("__cliente_id", sql.BigInt, id);
+  for (const [nombre, tipo, valor] of params) req.input(nombre, tipo, valor);
+  const r = await req.query<T>(
+    `EXEC sp_set_session_context @key = N'cliente_id', @value = @__cliente_id, @read_only = 1;\n${texto}`
+  );
+  return r.recordset ?? [];
+}
+
+/** Ejecuta una consulta sin parámetros y devuelve las filas tipadas (diagnóstico; sin cliente). */
 export async function consulta<T>(texto: string): Promise<T[]> {
   return consultaCon<T>(texto, []);
 }
