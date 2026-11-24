@@ -4,8 +4,9 @@ import PortalShell from "@/components/portal/shell/PortalShell";
 import type { PortalDatos } from "@/lib/contratos/portal";
 import { DatosPendientesError, cargarPortal } from "@/lib/data/portal";
 import { log } from "@/lib/log";
-import { activeAcct } from "@/lib/server/accounts";
-import { getSession } from "@/lib/server/session";
+import { urlFoto, versionFoto } from "@/lib/server/fotoPerfil";
+import { urlLogoPortal, versionLogo } from "@/lib/server/logoCliente";
+import { sesionPortal } from "@/lib/server/portalSesion";
 import "../portal.css";
 
 const outfit = Outfit({ subsets: ["latin"], weight: ["300", "400", "500", "600"], variable: "--font-outfit", display: "swap" });
@@ -13,23 +14,30 @@ const figtree = Figtree({ subsets: ["latin"], weight: ["400", "500", "600", "700
 
 export const dynamic = "force-dynamic";
 
-/* Portal cliente: diseño, colores y orden del prototipo entregado. La sesión se verifica aquí (defensa en capas con proxy.ts).
-   Los datos se cargan en el servidor desde lib/data/portal (DATA_SOURCE=mock|db) y bajan al PortalProvider. */
+/* Portal cliente: diseño, colores y orden del prototipo entregado. La sesión se verifica aquí contra la base (defensa en capas con proxy.ts).
+   Los datos se cargan en el servidor desde DMC_Core (lib/data/portal) y bajan al PortalProvider. */
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
-  const ses = await getSession();
-  if (ses?.k !== "portal") redirect("/login");
-  const acct = activeAcct("portal", ses.id);
-  if (!acct?.clienteId) redirect("/login");
+  // Valida la sesión contra la base en cada request (activo, sesion_version, cliente).
+  const ses = await sesionPortal();
+  if (!ses) redirect("/login");
+  if (ses.debeCambiarPassword) redirect("/cambiar-clave");
 
   let datos: PortalDatos;
   try {
-    datos = await cargarPortal({
-      email: acct.email,
-      clienteId: acct.clienteId,
-      clienteIdBd: acct.clienteIdBd ?? null,
-      nombre: acct.name,
-      rol: acct.role,
-    });
+    // La foto de perfil va en paralelo con los datos; si la tabla aún no existe, sin foto.
+    // Foto de perfil y logo del cliente van en paralelo con los datos. Si sus tablas aún no
+    // existen, sin foto y con el logo estático del cliente (public/clientes), si lo hay.
+    const clienteId = ses.ctx.clienteIdBd;
+    const [d, version, versionDelLogo] = await Promise.all([
+      cargarPortal({ ...ses.ctx, cliente: ses.cliente }),
+      ses.cookie.uc ? versionFoto(ses.cookie.uc).catch(() => null) : Promise.resolve(null),
+      clienteId ? versionLogo(clienteId).catch(() => null) : Promise.resolve(null),
+    ]);
+    datos = {
+      ...d,
+      usuario: { ...d.usuario, foto: urlFoto(version) },
+      cliente: { ...d.cliente, logo: clienteId ? urlLogoPortal(clienteId, versionDelLogo) : null },
+    };
   } catch (err) {
     if (err instanceof DatosPendientesError) {
       log.warn("portal.layout", { aviso: "mapeo de datos pendiente", secciones: err.secciones });

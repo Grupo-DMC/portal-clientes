@@ -64,7 +64,7 @@ export function Avatar({ nombre, foto, size = '' }) {
   const ini = nombre.split(' ').map((p) => p[0]).slice(0, 2).join('');
   return (
     <span className={`avatar ${size}`} aria-hidden="true">
-      {/* eslint-disable-next-line @next/next/no-img-element -- la foto es una URL local del navegador (blob:) */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- foto servida por /api/perfil/foto con sesión */}
       {foto ? <img src={foto} alt="" /> : ini}
     </span>
   );

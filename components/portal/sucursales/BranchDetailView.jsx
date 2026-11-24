@@ -1,14 +1,12 @@
 'use client';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Avatar, CountChip, Icon, Pill } from '@/components/portal/ui';
 import { ESTADOS_SUCURSAL, ESTADOS_VISITA, ROLES, reportePendiente, zonaNombre } from '@/lib/pcliente/constants';
 import { parseDMY, plural, slashDate } from '@/lib/pcliente/format';
-import { accesoA, branchHref, branchSlug, sucKey, visitHref } from '@/lib/pcliente/helpers';
+import { accesoA, branchSlug, sucKey, visitHref } from '@/lib/pcliente/helpers';
 import { usePortal } from '@/lib/pcliente/store';
 import ReportList from '@/components/portal/reportes/ReportList';
-import EditBranchDrawer from './EditBranchDrawer';
 
 function Stat({ label, value, note, tone = '' }) {
   return (
@@ -22,9 +20,7 @@ function Stat({ label, value, note, tone = '' }) {
 
 export default function BranchDetailView() {
   const { id } = useParams();
-  const router = useRouter();
   const { sucursales, visitas, reportes, cuentas, usuarios, garantias } = usePortal();
-  const [editing, setEditing] = useState(false);
   const s = sucursales.find((x) => branchSlug(x) === id);
 
   if (!s) {
@@ -43,7 +39,10 @@ export default function BranchDetailView() {
   const reps = reportes.filter((r) => r.local === k).sort((a, b) => b.id.localeCompare(a.id));
   const pend = reps.filter(reportePendiente).length;
   const people = accesoA(usuarios, s);
-  const place = s.mall ? `${s.mall}${s.local ? `, local ${s.local}` : ''}` : 'Dirección por confirmar';
+  const place = s.mall ? `${s.mall}${s.local ? `, local ${s.local}` : ''}` : s.direccion || 'Dirección por confirmar';
+  const garantia = s.enGarantia
+    ? (s.garantiaVence ? `Vigente hasta el ${s.garantiaVence.replace(/-/g, '/')}` : 'Vigente')
+    : s.garantia === 'vigente' ? `Vigente hasta el ${garantias.planVigenteHasta}` : null;
 
   return (
     <section className="view" aria-label="Detalle del local">
@@ -53,9 +52,6 @@ export default function BranchDetailView() {
           <div>
             <div className="vd-title"><h1>{s.nombre}</h1><Pill tone={st.cls}>{st.label}</Pill></div>
             <p className="vd-meta">{s.codigo && <><span className="num">{s.codigo}</span>, </>}{place}. {s.comuna}, {s.region}</p>
-          </div>
-          <div className="vd-actions">
-            <button className="btn-out" type="button" onClick={() => setEditing(true)}><Icon name="edit" />Editar local</button>
           </div>
         </div>
       </header>
@@ -88,7 +84,7 @@ export default function BranchDetailView() {
                   );
                 })}
               </ul>
-            ) : <p className="muted">No hay visitas de este local entre las cargadas en la maqueta.</p>}
+            ) : <p className="muted">Este local no tiene visitas realizadas.</p>}
           </section>
 
           <section className="vd-card">
@@ -101,14 +97,15 @@ export default function BranchDetailView() {
 
         <aside className="vd-side" aria-label="Datos del local">
           <section className="vd-card">
-            <div className="vd-card-head"><h2 className="vd-h">Datos del local</h2><button className="link" type="button" onClick={() => setEditing(true)}>Editar</button></div>
+            <div className="vd-card-head"><h2 className="vd-h">Datos del local</h2></div>
             <dl className="facts-list">
-              <div><dt>Zona</dt><dd>{zonaNombre(s.zona)}</dd></div>
               <div><dt>Marca</dt><dd>{s.marca}</dd></div>
               <div><dt>Mall</dt><dd>{s.mall || <span className="muted">Por confirmar</span>}</dd></div>
+              {s.direccion && <div><dt>Dirección</dt><dd>{s.direccion}</dd></div>}
+              {s.fechaInstalacion && <div><dt>Instalación</dt><dd className="num">{slashDate(s.fechaInstalacion)}</dd></div>}
               <div><dt>Local</dt><dd className="num">{s.local ?? <span className="muted">Por confirmar</span>}</dd></div>
               <div><dt>Comuna</dt><dd>{s.comuna}, {s.region}</dd></div>
-              <div><dt>Garantía</dt><dd>{s.garantia === 'vigente' ? `Vigente hasta el ${garantias.planVigenteHasta}` : <span className="muted">Sin datos</span>}</dd></div>
+              <div><dt>Garantía</dt><dd>{garantia ?? <span className="muted">{s.enGarantia === false ? 'Sin garantía' : 'Sin datos'}</span>}</dd></div>
             </dl>
           </section>
 
@@ -138,11 +135,6 @@ export default function BranchDetailView() {
         </aside>
       </div>
 
-      <EditBranchDrawer sucursal={s} open={editing} onClose={() => setEditing(false)}
-        onSaved={(nombre) => {
-          // Si el local no tiene código, su dirección depende del nombre: se actualiza la URL.
-          if (!s.codigo && nombre !== s.nombre) router.replace(branchHref({ ...s, nombre }));
-        }} />
     </section>
   );
 }

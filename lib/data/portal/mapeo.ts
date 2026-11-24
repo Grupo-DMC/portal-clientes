@@ -2,9 +2,10 @@
 //
 // El portal lee SOLO vistas del esquema `portal` (portal.v_*), que crea el
 // administrador de la base sobre las tablas de DMC_Core (esquemas `clientes` y
-// `tecnico`) según docs/portal-vistas.md. La cuenta dmc_app_portal no puede leer
-// las tablas directamente, y nada de `seguridad` se expone; además
-// lib/data/sql.ts rechaza cualquier consulta que no sea un SELECT sobre portal.v_*.
+// `tecnico`) según docs/portal-vistas.md. Las vistas ya excluyen lo interno
+// (comentario_interno, archivos internos). lib/data/sql.ts rechaza cualquier
+// consulta que no sea un SELECT sobre portal.v_* (la cuenta SQL hoy SÍ tiene
+// permisos sobre las tablas: esa regla de la app es la que lo impide).
 //
 // Toda vista lleva `cliente_id` y toda consulta filtra por el cliente de la
 // sesión (WHERE cliente_id = @cliente), además del session_context que usa el
@@ -34,8 +35,35 @@ export const COLUMNA_CLIENTE = "cliente_id";
 
 // Campos que lee cada sección. El resto del DTO se calcula en db.ts.
 export type CamposCliente = "nombre" | "razonSocial" | "rut";
-export type CamposSucursal = "codigo" | "nombre" | "marca" | "mall" | "comuna" | "region" | "problemasAbiertos" | "garantiaVence";
-export type CamposVisita = "folio" | "fecha" | "fechaISO" | "sucursal" | "tecnico" | "motivo" | "estado";
+export type CamposSucursal =
+  | "id"
+  | "codigo"
+  | "nombre"
+  | "direccion"
+  | "marca"
+  | "mall"
+  | "comuna"
+  | "region"
+  | "activo"
+  | "fechaInstalacion"
+  | "fechaInstalacionISO"
+  | "enGarantia"
+  | "garantiaMeses"
+  | "visitasRealizadas"
+  | "ultimaVisita";
+export type CamposVisita =
+  | "folio"
+  | "fecha"
+  | "fechaISO"
+  | "sucursalId"
+  | "sucursal"
+  | "marca"
+  | "tecnico"
+  | "motivo"
+  | "estado"
+  | "fotos"
+  | "videos"
+  | "problemas";
 export type CamposTrabajo = "fecha" | "sucursal" | "trabajo" | "tecnico" | "estado";
 export type CamposCuentaLocal = "local" | "usuario" | "estado" | "ultimo";
 export type CamposReporte = "id" | "local" | "fecha" | "tipo" | "detalle" | "estado" | "prioridadNivel" | "prioridadMotivo";
@@ -60,15 +88,16 @@ export interface MapeoPortal {
   despachos: MapeoSeccion<CamposDespacho> | null;
 }
 
-/** Estados de tecnico.visita.estado → los cuatro que conoce la UI. Los marcados [VERIFICAR] son provisorios. */
+/**
+ * Estados de portal.v_visita → los que conoce la UI. La vista solo trae visitas
+ * realizadas (COMPLETADA o PENDIENTE); el resto queda por si se amplía.
+ */
 export const ESTADOS_VISITA_BD: Record<string, string> = {
-  PROGRAMADA: "programada",
   COMPLETADA: "completada",
+  PENDIENTE: "pendiente",
+  PROGRAMADA: "programada",
   CANCELADA: "cancelada",
   CANCELADA_ADMIN: "cancelada_admin",
-  EN_CURSO: "programada", // [VERIFICAR]
-  REAGENDADA: "programada", // [VERIFICAR]
-  PENDIENTE: "programada", // [VERIFICAR]
 };
 
 /** Valores de la UI para tickets abiertos y de alta prioridad. */
@@ -79,26 +108,27 @@ export const PRIORIDAD_ALTA = ["Alta", "Urgente"];
 export const DIAS_GARANTIA_POR_VENCER = 30;
 
 export const MAPEO: MapeoPortal = {
-  cliente: {
-    tabla: "portal.v_cliente",
-    campos: {
-      nombre: { col: "nombre", tipo: "texto" },
-      razonSocial: { col: "razon_social", tipo: "texto" },
-      rut: { col: "rut", tipo: "texto" },
-    },
-  },
+  // No hay portal.v_cliente: la cabecera del cliente llega con la sesión (lib/server/portalSesion.ts).
+  cliente: null,
   sucursales: {
     tabla: "portal.v_sucursal",
     orden: { col: "nombre", dir: "ASC" },
     campos: {
+      id: { col: "sucursal_id", tipo: "numero" },
       codigo: { col: "codigo", tipo: "texto" },
       nombre: { col: "nombre", tipo: "texto" },
+      direccion: { col: "direccion", tipo: "texto" },
       marca: { col: "marca", tipo: "texto" },
       mall: { col: "mall", tipo: "texto" },
       comuna: { col: "comuna", tipo: "texto" },
       region: { col: "region", tipo: "texto" },
-      problemasAbiertos: { col: "problemas_abiertos", tipo: "numero" },
-      garantiaVence: { col: "garantia_vence", tipo: "fechaISO" },
+      activo: { col: "activo", tipo: "bool" },
+      fechaInstalacion: { col: "fecha_instalacion", tipo: "fecha" },
+      fechaInstalacionISO: { col: "fecha_instalacion", tipo: "fechaISO" },
+      enGarantia: { col: "en_garantia", tipo: "bool" },
+      garantiaMeses: { col: "garantia_meses", tipo: "numero" },
+      visitasRealizadas: { col: "visitas_realizadas", tipo: "numero" },
+      ultimaVisita: { col: "ultima_visita", tipo: "fecha" },
     },
   },
   visitas: {
@@ -108,10 +138,15 @@ export const MAPEO: MapeoPortal = {
       folio: { col: "folio", tipo: "texto" },
       fecha: { col: "fecha_programada", tipo: "fecha" },
       fechaISO: { col: "fecha_programada", tipo: "fechaISO" },
+      sucursalId: { col: "sucursal_id", tipo: "numero" },
       sucursal: { col: "sucursal", tipo: "texto" },
+      marca: { col: "marca", tipo: "texto" },
       tecnico: { col: "tecnico", tipo: "texto" },
       motivo: { col: "motivo", tipo: "texto" },
       estado: { col: "estado", tipo: "texto" },
+      fotos: { col: "fotos", tipo: "numero" },
+      videos: { col: "videos", tipo: "numero" },
+      problemas: { col: "problemas", tipo: "numero" },
     },
     valores: { estado: ESTADOS_VISITA_BD },
   },
@@ -138,4 +173,4 @@ export const MAPEO: MapeoPortal = {
 };
 
 /** Secciones sin las cuales el portal no puede pintarse. */
-export const SECCIONES_OBLIGATORIAS = ["cliente", "sucursales", "visitas"] as const satisfies readonly (keyof MapeoPortal)[];
+export const SECCIONES_OBLIGATORIAS = ["sucursales", "visitas"] as const satisfies readonly (keyof MapeoPortal)[];

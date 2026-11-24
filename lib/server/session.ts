@@ -4,12 +4,20 @@ import { cookies } from "next/headers";
 
 /* Sesión en cookie httpOnly firmada con HMAC-SHA256. No guarda datos
    sensibles: solo superficie e identidad; el resto se resuelve en servidor. */
-export type Kind = "panel" | "portal" | "local";
+export type Kind = "panel" | "portal";
 export type Payload = {
   k: Kind;
-  /** email (panel/portal) o id de sucursal (local) */
+  /** email de la cuenta */
   id: string;
   exp: number;
+  /** id de la cuenta: seguridad.usuario.id (panel) o seguridad.usuario_cliente.id (portal). */
+  uc?: number;
+  /** Solo portal: cliente_id de la cuenta (el único filtro de datos; nunca sale de la URL ni del body). */
+  c?: number;
+  /** sesion_version al iniciar sesión. Si cambia en la base, la sesión deja de valer. */
+  sv?: number;
+  /** «Recordarme»: la cookie es persistente. */
+  r?: boolean;
 };
 
 const DEV_SECRET = "dev-only-secret-change-me-dev-only-secret";
@@ -47,14 +55,20 @@ const base = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NOD
 
 export async function setSession(p: Omit<Payload, "exp">, remember = false) {
   const ttl = remember ? 1000 * 60 * 60 * 24 * 14 : 1000 * 60 * 60 * 8;
+  await setSessionHasta({ ...p, r: remember || undefined }, Date.now() + ttl, remember);
+}
+
+/** Reemite la sesión con el mismo vencimiento (p. ej. tras cambiar la clave, con la nueva sesion_version). */
+export async function setSessionHasta(p: Omit<Payload, "exp">, exp: number, persistente: boolean) {
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, encode({ ...p, exp: Date.now() + ttl }), { ...base, ...(remember ? { maxAge: ttl / 1000 } : {}) });
+  const maxAge = Math.max(0, Math.floor((exp - Date.now()) / 1000));
+  jar.set(SESSION_COOKIE, encode({ ...p, exp }), { ...base, ...(persistente ? { maxAge } : {}) });
   // Restos del flujo anterior de varios pasos.
   jar.delete(LEGACY_PENDING);
 }
 export async function getSession(): Promise<Payload | null> {
   const p = decode((await cookies()).get(SESSION_COOKIE)?.value);
-  return p && (p.k === "panel" || p.k === "portal" || p.k === "local") ? p : null;
+  return p && (p.k === "panel" || p.k === "portal") ? p : null;
 }
 export async function clearSession() {
   const jar = await cookies();

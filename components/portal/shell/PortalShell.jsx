@@ -2,7 +2,8 @@
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Icon } from '@/components/portal/ui';
+import Link from 'next/link';
+import { Avatar, Icon } from '@/components/portal/ui';
 import { ToastProvider } from '@/components/portal/ui/Toast';
 import { PortalProvider, usePortal } from '@/lib/pcliente/store';
 import { branchSlug, shortName } from '@/lib/pcliente/helpers';
@@ -31,6 +32,7 @@ function usePageTitle() {
 
 function Frame({ children }) {
   const pathname = usePathname();
+  const { usuario } = usePortal();
   const title = usePageTitle();
   const [menu, setMenu] = useState(false);
   const menuBtn = useRef(null);
@@ -63,6 +65,7 @@ function Frame({ children }) {
           <Image className="mbar-logo" src="/pc/logo-dmc.png" alt="Grupo DMC" width={561} height={199} />
           <span className="mbar-title">{title}</span>
           <NotificationBell />
+          <Link className="mbar-me" href="/portal/perfil" aria-label="Mi perfil" title={usuario.nombre}><Avatar nombre={usuario.nombre} foto={usuario.foto} size="sm" /></Link>
         </header>
         <main className="wrap" id="main" tabIndex={-1} ref={main}>
           {children}

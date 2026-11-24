@@ -83,3 +83,18 @@ export function ticketsPorSucursal(tickets: Pick<TicketPortalDto, "sucursal" | "
   for (const t of tickets) if (t.estado === abierto) mapa.set(t.sucursal, (mapa.get(t.sucursal) ?? 0) + 1);
   return mapa;
 }
+
+/**
+ * Vencimiento de la garantía de una sucursal: fecha_instalacion + garantia_meses,
+ * solo si la vista la marca en_garantia. 'YYYY-MM-DD' o null.
+ */
+export function venceGarantia(enGarantia: boolean | null, instalacionISO: string | null, meses: number | null): string | null {
+  const f = instalacionISO ? deISO(instalacionISO) : null;
+  if (!enGarantia || !f || !meses || meses <= 0) return null;
+  const v = new Date(f.getFullYear(), f.getMonth() + meses, f.getDate());
+  // Si el mes de destino es más corto (31 → 30), queda en el último día de ese mes.
+  if (v.getDate() !== f.getDate()) v.setDate(0);
+  const dd = String(v.getDate()).padStart(2, "0");
+  const mm = String(v.getMonth() + 1).padStart(2, "0");
+  return `${v.getFullYear()}-${mm}-${dd}`;
+}

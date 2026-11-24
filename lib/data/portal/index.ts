@@ -1,23 +1,17 @@
 import "server-only";
-import type { ContextoPortal } from "@/lib/contratos/portal";
-import { fuenteDeDatos } from "@/lib/env";
+import type { ContextoPortal, FiltrosVisitas } from "@/lib/contratos/portal";
 import { fuenteDb } from "./db";
-import type { FuentePortal } from "./fuente";
-import { fuenteMock } from "./mock";
 
 // Punto de entrada de la capa de datos del portal. Las páginas y layouts del
-// portal importan SOLO de aquí; nunca de mock.ts ni de db.ts. Cambiar de fuente
-// es cambiar DATA_SOURCE: la UI no se entera.
+// portal importan SOLO de aquí. Todo sale de DMC_Core (vistas portal.v_*).
 
-export function fuentePortal(): FuentePortal {
-  return fuenteDeDatos() === "db" ? fuenteDb : fuenteMock;
-}
-
-export const cargarPortal = (ctx: ContextoPortal) => fuentePortal().cargarPortal(ctx);
-export const listarTickets = (ctx: ContextoPortal) => fuentePortal().listarTickets(ctx);
-export const listarTrabajosPlanificados = (ctx: ContextoPortal) => fuentePortal().listarTrabajosPlanificados(ctx);
-export const listarCotizaciones = (ctx: ContextoPortal) => fuentePortal().listarCotizaciones(ctx);
-export const listarDespachos = (ctx: ContextoPortal) => fuentePortal().listarDespachos(ctx);
+export const cargarPortal = (ctx: ContextoPortal) => fuenteDb.cargarPortal(ctx);
+export const listarVisitas = (ctx: ContextoPortal, filtros: FiltrosVisitas = {}) => fuenteDb.listarVisitas(ctx, filtros);
+export const detalleVisita = (ctx: ContextoPortal, folio: string) => fuenteDb.detalleVisita(ctx, folio);
+export const listarTickets = (ctx: ContextoPortal) => fuenteDb.listarTickets(ctx);
+export const listarTrabajosPlanificados = (ctx: ContextoPortal) => fuenteDb.listarTrabajosPlanificados(ctx);
+export const listarCotizaciones = (ctx: ContextoPortal) => fuenteDb.listarCotizaciones(ctx);
+export const listarDespachos = (ctx: ContextoPortal) => fuenteDb.listarDespachos(ctx);
 
 export { DatosPendientesError } from "./errores";
 export type { FuentePortal } from "./fuente";

@@ -19,7 +19,7 @@ export default function DashboardView() {
   const visitas = {
     anio: { v: vr.porMes.reduce((a, b) => a + b, 0), note: `en ${vr.anio}` },
     mes: { v: vr.mes, note: 'últimos 30 días' },
-    semana: { v: vr.semana, note: 'últimos 7 días' } // dato de ejemplo
+    semana: { v: vr.semana, note: 'últimos 7 días' }
   }[periodo];
 
   const verSucursalesConTickets = () => {
@@ -32,7 +32,10 @@ export default function DashboardView() {
       <section className="hero" aria-label="Cliente">
         <div className="client">
           {/* Logo del cliente: si el sistema entrega una URL, reemplaza la inicial por <img>. */}
-          <div className="client-logo"><span className="mono" aria-hidden="true">{cliente.nombre[0]}</span></div>
+          <div className="client-logo">
+            {/* eslint-disable-next-line @next/next/no-img-element -- logo del cliente servido por la app */}
+            {cliente.logo ? <img src={cliente.logo} alt={`Logo de ${cliente.nombre}`} /> : <span className="mono" aria-hidden="true">{cliente.nombre[0]}</span>}
+          </div>
           <div>
             <p className="hello">Hola, {usuario.nombre.split(' ')[0]}</p>
             <h1>{cliente.nombre}</h1>

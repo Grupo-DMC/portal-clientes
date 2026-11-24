@@ -1,214 +1,260 @@
 'use client';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CountChip, Icon, Pill } from '@/components/portal/ui';
-import { useToast } from '@/components/portal/ui/Toast';
+import { Icon, Pill } from '@/components/portal/ui';
 import { ESTADOS_VISITA } from '@/lib/pcliente/constants';
-import { initials, longDate, maskRut, minutesBetween, parseDMY } from '@/lib/pcliente/format';
-import { branchHref, visitSlug } from '@/lib/pcliente/helpers';
+import { longDate, parseDMY } from '@/lib/pcliente/format';
+import { branchHref } from '@/lib/pcliente/helpers';
 import { usePortal } from '@/lib/pcliente/store';
 import Lightbox from './Lightbox';
-import { svgUrl, testImage } from './testImages';
 
-/** Menú "Descargar": informe, fotos o videos. */
-function DownloadMenu({ d }) {
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const wrap = useRef(null);
+// Acta de la visita: mismas secciones 01–05 que el PDF que recibe el cliente.
+// Las fotos se ven como miniaturas WebP (?mini=1, ~17 KB) con carga diferida y se
+// abren en grande en el visor; los videos no se descargan hasta reproducirlos.
+
+const descargar = (url) => (url ? `${url}?descarga=1` : null);
+const duracionClip = (seg) => (seg ? `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}` : '');
+const peso = (b) => (b ? (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`) : '');
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+const duracionMin = (m) => (m == null ? null : m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min` : `${m} min`);
+
+/** Botón «Descargar acta» con las dos opciones de sys_tecnicos. Descargas nativas del navegador: nada se junta en memoria. */
+function DescargarActa({ folio, completada, fotos, videos }) {
+  const [abierto, setAbierto] = useState(false);
+  const ref = useRef(null);
   useEffect(() => {
-    if (!open) return undefined;
-    wrap.current.querySelector('[role="menuitem"]')?.focus();
-    const onDoc = (e) => { if (!wrap.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-  const pick = (label) => { setOpen(false); toast(`En producción se descarga: ${label.toLowerCase()}.`); };
+    if (!abierto) return undefined;
+    const fuera = (e) => { if (!ref.current?.contains(e.target)) setAbierto(false); };
+    const esc = (e) => { if (e.key === 'Escape') { setAbierto(false); ref.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', fuera);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', fuera); document.removeEventListener('keydown', esc); };
+  }, [abierto]);
+
+  const conteo = [fotos ? plural(fotos, 'foto', 'fotos') : '', videos ? plural(videos, 'video', 'videos') : ''].filter(Boolean).join(' y ');
+  const f = encodeURIComponent(folio);
+  const opciones = [
+    completada && { href: `/api/visita/acta/${f}`, texto: 'Acta en PDF', detalle: 'La que recibe el cliente, sin comentarios internos' },
+    fotos + videos > 0 && { href: `/api/visita/multimedia/${f}`, texto: 'Fotos y videos (.zip)', detalle: `${conteo} para el cliente` },
+  ].filter(Boolean);
+  if (!opciones.length) return null;
+
   return (
-    <div className="menu" ref={wrap} onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); wrap.current.querySelector('button').focus(); } }}>
-      <button className="btn-out" type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <Icon name="download" />Descargar<Icon name="chevron" />
+    <div className="menu" ref={ref}>
+      <button className="btn-pri" type="button" aria-haspopup="true" aria-expanded={abierto} onClick={() => setAbierto((a) => !a)}>
+        <Icon name="download" />Descargar acta<Icon name="chevron" />
       </button>
-      {open && (
-        <div className="menu-list" role="menu">
-          {[`Informe de la visita (PDF)`, `Todas las fotos (${d.fotos.length})`, `Todos los videos (${d.videos.length})`].map((l) => (
-            <button key={l} role="menuitem" type="button" onClick={() => pick(l)}>{l}</button>
-          ))}
-        </div>
-      )}
+      <div className="menu-list acta-menu" hidden={!abierto}>
+        {opciones.map((o) => (
+          <a key={o.href} href={o.href} download onClick={() => setAbierto(false)}>
+            <Icon name="download" />
+            <span><b>{o.texto}</b><span className="muted">{o.detalle}</span></span>
+          </a>
+        ))}
+        <p className="muted acta-menu-nota">La descarga empieza en tu navegador; el PDF puede tardar unos segundos.</p>
+      </div>
     </div>
   );
 }
 
-function Evidence({ d }) {
-  const [tab, setTab] = useState('fotos');
-  const [lb, setLb] = useState(null);
-  const gallery = useMemo(() => [
-    ...d.fotos.map((f, i) => ({ kind: 'foto', label: `Foto ${i + 1}`, meta: f.hora, src: svgUrl(testImage(f.tema, i + 1)) })),
-    ...d.videos.map((v, i) => ({ kind: 'video', label: `Video ${i + 1}`, meta: `${v.dur}, ${v.res}`, src: svgUrl(testImage(v.tema, 40 + i, 480, 640)) }))
-  ], [d]);
-  const tabs = [{ id: 'fotos', label: 'Fotos', n: d.fotos.length }, { id: 'videos', label: 'Videos', n: d.videos.length }];
-  const onTabKey = (e) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-    const next = tab === 'fotos' ? 'videos' : 'fotos';
-    setTab(next);
-    document.getElementById(`tab-${next}`)?.focus();
-  };
-
+/** Título de sección numerado, como en el PDF. */
+function Seccion({ n, titulo, extra, children, id }) {
   return (
-    <section className="vd-card">
+    <section className="vd-card acta-sec" aria-labelledby={id}>
       <div className="vd-card-head">
-        <div className="tabs" role="tablist" aria-label="Evidencia" onKeyDown={onTabKey}>
-          {tabs.map((t) => (
-            <button key={t.id} role="tab" type="button" id={`tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`panel-${t.id}`}
-              tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)}>
-              {t.label} <span className="num">{t.n}</span>
-            </button>
-          ))}
-        </div>
-        <span className="muted test-note">Imágenes de prueba</span>
+        <h2 className="vd-h acta-h" id={id}><span className="acta-n num">{String(n).padStart(2, '0')}</span>{titulo}</h2>
+        {extra}
       </div>
-      <div role="tabpanel" id="panel-fotos" aria-labelledby="tab-fotos" hidden={tab !== 'fotos'}>
-        <div className="photos">
-          {d.fotos.map((f, i) => (
-            <button key={i} type="button" className="thumb" aria-label={`Abrir foto ${i + 1}`} onClick={() => setLb(i)}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- imagen de prueba en data URI */}
-              <img src={gallery[i].src} alt="" loading="lazy" />
-              <span className="thumb-cap"><b>Foto {i + 1}</b><span className="num">{f.hora}</span></span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div role="tabpanel" id="panel-videos" aria-labelledby="tab-videos" hidden={tab !== 'videos'}>
-        <div className="videos">
-          {d.videos.map((v, i) => (
-            <button key={i} type="button" className="vthumb" aria-label={`Abrir video ${i + 1}, duración ${v.dur}`} onClick={() => setLb(d.fotos.length + i)}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- imagen de prueba en data URI */}
-              <img src={gallery[d.fotos.length + i].src} alt="" />
-              <span className="play"><Icon name="play" /></span>
-              <span className="thumb-cap"><b>Video {i + 1}</b><span className="num">{v.dur}, {v.res}</span></span>
-            </button>
-          ))}
-        </div>
-      </div>
-      {lb !== null && <Lightbox items={gallery} index={lb} onIndex={setLb} onClose={() => setLb(null)} />}
+      {children}
     </section>
   );
 }
 
-export default function VisitDetailView() {
-  const { folio } = useParams();
-  const { visitas, sucursales } = usePortal();
-  const v = visitas.find((x) => visitSlug(x.folio) === folio);
+/** Miniatura de foto: WebP liviano, carga diferida; abre el visor. */
+function Foto({ f, onOpen, grande = false }) {
+  const [lista, setLista] = useState(false);
+  return (
+    <figure className={`acta-foto${grande ? ' is-big' : ''}`}>
+      <button type="button" className={`thumb${lista ? '' : ' is-loading'}`} aria-label={`Abrir ${f.etiqueta} en grande`} onClick={onOpen}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- archivo con sesión servido por /api/archivo */}
+        <img src={f.mini} alt="" loading="lazy" decoding="async" onLoad={() => setLista(true)} onError={() => setLista(true)} />
+      </button>
+      <figcaption><b>{f.etiqueta}</b>{f.contexto && <span className="muted"> · {f.contexto}</span>}</figcaption>
+    </figure>
+  );
+}
 
-  if (!v) {
-    return (
-      <div className="empty-state">
-        <h2>No encontramos esa visita</h2>
-        <p>Puede que el folio no exista o que no tengas acceso.</p>
-        <Link className="btn-sec" href="/portal/visitas">Volver a Visitas</Link>
-      </div>
-    );
-  }
+/** Tarjeta de video: póster propio (sin bajar el clip) y reproducción en el visor. */
+function Video({ v, onOpen }) {
+  return (
+    <figure className="acta-foto">
+      <button type="button" className="vthumb acta-poster" aria-label={`Reproducir ${v.etiqueta}${v.meta ? `, ${v.meta}` : ''}`} onClick={onOpen}>
+        <span className="play"><Icon name="play" /></span>
+        <span className="acta-poster-meta num">{v.meta}</span>
+      </button>
+      <figcaption><b>{v.etiqueta}</b>{v.contexto && <span className="muted"> · {v.contexto}</span>}</figcaption>
+    </figure>
+  );
+}
 
-  const st = ESTADOS_VISITA[v.estado], d = v.detalle;
-  const suc = sucursales.find((s) => s.nombre === v.sucursal);
-  const cancelada = v.estado.startsWith('cancelada');
+/** `v`: acta ya cargada y filtrada por cliente en el servidor (lib/data/portal → detalleVisita). */
+export default function VisitDetailView({ v }) {
+  const { sucursales, cliente } = usePortal();
+  const [lb, setLb] = useState(null);
+  const st = ESTADOS_VISITA[v.estado] || { label: v.estado, cls: 'off' };
+  const suc = sucursales.find((s) => (v.sucursalId && s.id === v.sucursalId) || s.nombre === v.sucursal);
+  const fecha = longDate(parseDMY(v.fecha));
+  const completada = v.estado === 'completada';
+  const real = v.motivos.filter((m) => m.ambito === 'REAL').map((m) => m.motivo);
+  const plan = v.motivos.filter((m) => m.ambito !== 'REAL').map((m) => m.motivo);
+  const motivos = real.length ? real : plan.length ? plan : [v.motivo].filter(Boolean);
+  const firma = v.archivos.find((a) => a.tipo === 'FIRMA_TIENDA') ?? v.archivos.find((a) => a.tipo.startsWith('FIRMA_'));
+
+  /* Fotos y videos numerados como en el PDF y el .zip, con el problema al que pertenecen. */
+  const { fotos, videos, galeria } = useMemo(() => {
+    const prob = new Map(v.problemas.map((p, i) => [p.id, `Problema ${i + 1}: ${p.tipo}`]));
+    const fotos = v.archivos.filter((a) => a.tipo === 'FOTO').map((a, i) => ({
+      ...a, etiqueta: `Foto ${i + 1}`, contexto: [a.descripcion, prob.get(a.problemaId)].filter(Boolean).join(' · '), mini: a.miniUrl || a.url
+    }));
+    const videos = v.archivos.filter((a) => a.tipo === 'VIDEO').map((a, i) => ({
+      ...a, etiqueta: `Video ${i + 1}`, contexto: [a.descripcion, prob.get(a.problemaId)].filter(Boolean).join(' · '),
+      meta: [duracionClip(a.duracionSeg), peso(a.bytes)].filter(Boolean).join(' · ')
+    }));
+    const galeria = [
+      ...fotos.map((f) => ({ kind: 'foto', label: [f.etiqueta, f.contexto].filter(Boolean).join(' · '), meta: '', src: f.url, download: descargar(f.url) })),
+      ...videos.map((x) => ({ kind: 'video', label: [x.etiqueta, x.contexto].filter(Boolean).join(' · '), meta: x.meta, src: x.url, download: descargar(x.url) }))
+    ];
+    return { fotos, videos, galeria };
+  }, [v]);
+  const abrirFoto = (i) => setLb(i);
+  const abrirVideo = (i) => setLb(fotos.length + i);
+  const fotosDe = (problemaId) => fotos.map((f, i) => ({ f, i })).filter((x) => x.f.problemaId === problemaId);
+  const fotosSueltas = fotos.map((f, i) => ({ f, i })).filter((x, k) => k > 0 && !x.f.problemaId);
+
+  const datos = [
+    ['Cliente', cliente?.nombre || '—'], ['Marca', v.marca || '—'],
+    ['Sucursal', <>{suc ? <Link className="link" href={branchHref(suc)}>{v.sucursal}</Link> : v.sucursal}{v.sucursalCodigo && <span className="muted"> ({v.sucursalCodigo})</span>}</>],
+    ['Mall', v.mall || 'Local a la calle'],
+    ['Dirección', [v.direccion, v.comuna, v.region].filter(Boolean).join(', ') || '—', true],
+    ['Técnico a cargo', v.tecnico || '—'], ['Técnico ayudante', v.tecnicoAyudante || 'No aplica'],
+    ['Responsable de tienda', [v.responsable?.nombre ?? firma?.descripcion, v.responsable?.cargo].filter(Boolean).join(' · ') || '—'],
+    ['RUT', firma?.rut || '—']
+  ];
 
   return (
-    <section className="view" aria-label="Detalle de la visita">
+    <section className="view" aria-label={`Acta de la visita ${v.folio}`}>
       <header className="vd-head">
         <Link className="back" href="/portal/visitas"><Icon name="back" />Visitas</Link>
         <div className="vd-titlebar">
           <div>
-            <div className="vd-title"><h1>{v.folio}</h1><Pill tone={st.cls}>{st.label}</Pill></div>
-            <p className="vd-meta">{v.motivo} en {v.sucursal}</p>
+            <p className="acta-kicker">Acta de visita técnica · N° {v.folio}</p>
+            <div className="vd-title"><h1>{v.sucursal}</h1><Pill tone={st.cls}>{st.label}</Pill></div>
+            <p className="vd-meta">{[v.marca, v.motivo].filter(Boolean).join(' · ')}</p>
           </div>
-          {d && <div className="vd-actions"><DownloadMenu d={d} /></div>}
+          <div className="vd-actions">
+            <DescargarActa folio={v.folio} completada={completada} fotos={fotos.length} videos={videos.length} />
+          </div>
         </div>
       </header>
 
-      <div className="vd-grid">
-        <div className="vd-main">
-          {v.estado === 'programada' && (
-            <section className="vd-card notice-card"><Icon name="calendar" /><div><h2 className="vd-h">Visita programada</h2><p>El técnico registrará aquí el trabajo, las fotos y la firma cuando termine la visita.</p></div></section>
-          )}
-          {cancelada && (
-            <section className="vd-card notice-card off"><Icon name="info" /><div><h2 className="vd-h">Esta visita fue cancelada</h2><p>No tiene trabajo registrado. Si necesitas reagendarla, contacta a tu ejecutivo de Grupo DMC.</p></div></section>
-          )}
-          {v.estado === 'completada' && !d && (
-            <section className="vd-card notice-card"><Icon name="info" /><div><h2 className="vd-h">Detalle no cargado en esta maqueta</h2><p>Para ver un detalle completo abre la visita <Link className="link" href="/portal/visitas/v-2026-01064">V-2026-01064</Link>.</p></div></section>
-          )}
-          {d && (
+      <dl className="acta-resumen">
+        <div><dt>Fecha</dt><dd>{fecha}</dd></div>
+        <div><dt>Horario en tienda</dt><dd className="num">{v.horaInicio ? `${v.horaInicio} – ${v.horaTermino ?? '—'}` : '—'}</dd></div>
+        <div><dt>Duración</dt><dd className="num">{duracionMin(v.duracionMin) ?? '—'}</dd></div>
+        <div><dt>Problemas</dt><dd className={v.problemas.length ? 'is-warn' : ''}>{v.problemas.length ? plural(v.problemas.length, 'detectado', 'detectados') : 'Ninguno'}</dd></div>
+      </dl>
+
+      <div className="acta-cuerpo">
+        <Seccion n={1} id="sec1" titulo="Trabajo realizado">
+          <div className={fotos.length ? 'acta-01' : ''}>
+            <div className="acta-01-texto">
+              {motivos.length > 0 && (
+                <div className="acta-campo"><span className="acta-rot">Motivo de la visita</span>
+                  <ul className="acta-chips">{motivos.map((m) => <li key={m}>{m}</li>)}</ul></div>
+              )}
+              {v.trabajoSolicitado && <div className="acta-campo"><span className="acta-rot">Trabajo solicitado</span><p className="req">{v.trabajoSolicitado}</p></div>}
+              <div className="acta-campo">
+                <span className="acta-rot">Tareas</span>
+                {v.trabajos.length ? (
+                  <ol className="acta-tareas">
+                    {v.trabajos.map((t, i) => (
+                      <li key={`${t.trabajo}-${i}`}>
+                        <span className="acta-tn num">{i + 1}</span>
+                        <div>
+                          <b>{t.trabajo}</b>
+                          {t.subtrabajos.length > 0 && <p className="muted">{t.subtrabajos.map((s) => (s.cantidad > 1 ? `${s.etiqueta} × ${s.cantidad}` : s.etiqueta)).join(' · ')}</p>}
+                          {t.detalle && <p>{t.detalle}</p>}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : <p className="muted">No hay tareas registradas.</p>}
+              </div>
+              {v.observaciones && <div className="acta-campo acta-detalle"><span className="acta-rot">Detalle del trabajo</span><p>{v.observaciones}</p></div>}
+            </div>
+            {fotos[0] && <Foto f={fotos[0]} grande onOpen={() => abrirFoto(0)} />}
+          </div>
+        </Seccion>
+
+        <Seccion n={2} id="sec2" titulo="Problemas detectados">
+          {v.problemas.length ? (
+            <ol className="probs">
+              {v.problemas.map((p, i) => {
+                const suyas = fotosDe(p.id);
+                return (
+                  <li key={p.id} className={p.estadoCodigo === 'ABIERTO' ? 'is-open' : ''}>
+                    <div className="prob-head"><b>Problema {i + 1}: {p.tipo}</b><Pill tone={p.estadoCodigo === 'ABIERTO' ? 'obs' : 'ok'}>{p.estado}</Pill></div>
+                    {p.items && <p><span className="acta-rot">Equipos</span> {p.items}</p>}
+                    {p.descripcion && <p><span className="acta-rot">Descripción</span> {p.descripcion}</p>}
+                    {p.solucion && <p><span className="acta-rot">Solución sugerida</span> {p.solucion}</p>}
+                    {p.resueltoEn && <p className="muted">Resuelto el {p.resueltoEn.replace(/-/g, '/')}</p>}
+                    {suyas.length > 0 && <div className="acta-grid">{suyas.map(({ f, i: k }) => <Foto key={f.id} f={f} onOpen={() => abrirFoto(k)} />)}</div>}
+                  </li>
+                );
+              })}
+            </ol>
+          ) : <p className="ok-line"><Icon name="check" />Sin problemas detectados en esta visita.</p>}
+        </Seccion>
+
+        <Seccion n={3} id="sec3" titulo="Datos de la visita">
+          <dl className="acta-datos">
+            {datos.map(([k, val, ancho]) => <div key={k} className={ancho ? 'is-wide' : ''}><dt>{k}</dt><dd>{val}</dd></div>)}
+          </dl>
+        </Seccion>
+
+        <Seccion n={4} id="sec4" titulo="Registro fotográfico adicional"
+          extra={<span className="muted acta-cuenta">{[plural(fotos.length, 'foto', 'fotos'), plural(videos.length, 'video', 'videos')].join(' · ')}</span>}>
+          {fotosSueltas.length > 0 && <div className="acta-grid">{fotosSueltas.map(({ f, i }) => <Foto key={f.id} f={f} onOpen={() => abrirFoto(i)} />)}</div>}
+          {videos.length > 0 && (
             <>
-              <section className="vd-card">
-                <div className="vd-card-head"><h2 className="vd-h">Trabajo solicitado</h2><span className="muted">por {d.solicitadoPor}</span></div>
-                <p className="req">{d.solicitud}</p>
-                {d.credencialesOcultas && <p className="hint"><Icon name="lock" /><span>La nota incluía credenciales de red y se ocultaron por seguridad.</span></p>}
-              </section>
-              <section className="vd-card">
-                <div className="vd-card-head"><h2 className="vd-h">Trabajo realizado</h2><CountChip n={d.trabajos.length} /></div>
-                <div className="works">
-                  {d.trabajos.map((t) => (
-                    <article className="work" key={t.titulo}>
-                      <span className="muted work-type">{t.tipo}</span>
-                      <h3>{t.titulo}</h3>
-                      <ul className="qty">{t.items.map((it) => <li key={it.n}><span>{it.n}</span><b className="num">× {it.c}</b></li>)}</ul>
-                    </article>
-                  ))}
-                </div>
-              </section>
-              <section className="vd-card">
-                <div className="vd-card-head"><h2 className="vd-h">Problemas levantados</h2><CountChip n={d.problemas.length} warn={d.problemas.length > 0} /></div>
-                {d.problemas.length === 0 && <p className="ok-line"><Icon name="check" />Sin problemas registrados en esta visita.</p>}
-              </section>
-              <Evidence d={d} />
+              <h3 className="acta-sub">Videos</h3>
+              <div className="acta-grid acta-grid-v">{videos.map((x, i) => <Video key={x.id} v={x} onOpen={() => abrirVideo(i)} />)}</div>
             </>
           )}
-        </div>
+          {!fotosSueltas.length && !videos.length && <p className="muted">{fotos.length ? 'Las fotos de esta visita ya se muestran en sus secciones.' : 'La visita no tiene fotos ni videos.'}</p>}
+        </Seccion>
 
-        <aside className="vd-side" aria-label="Resumen de la visita">
-          <section className="vd-card">
-            <h2 className="vd-h">Resumen</h2>
-            <dl className="facts-list">
-              <div><dt><Icon name="calendar" />Fecha</dt><dd>{longDate(parseDMY(v.fecha))}</dd></div>
-              {d && <div><dt><Icon name="clock" />Horario</dt><dd className="num">{d.inicio} a {d.fin} <span className="muted">({minutesBetween(d.inicio, d.fin)} min)</span></dd></div>}
-              <div><dt><span className="mini-av" aria-hidden="true">{initials(v.tecnico)}</span>Técnico</dt><dd>{v.tecnico}</dd></div>
-              <div><dt><Icon name="store" />Sucursal</dt><dd>
-                {suc ? <Link className="link" href={branchHref(suc)}>{v.sucursal}</Link> : v.sucursal}
-                {suc && <span className="muted d-block">{suc.mall ? `${suc.mall}, local ${suc.local}. ` : ''}{suc.comuna}</span>}
-              </dd></div>
-              <div><dt><Icon name="check" />Motivo</dt><dd>{v.motivo}</dd></div>
-            </dl>
-          </section>
-
-          {d?.firma && (
-            <section className="vd-card">
-              <h2 className="vd-h">Recepción conforme</h2>
-              <svg className="sig" viewBox="0 0 220 70" aria-hidden="true"><path d="M8 52c18-30 30-38 34-26s-10 30 6 22 22-40 30-30-8 34 6 30 14-26 24-22-2 20 10 18 30-26 44-22 8 12 20 10 18-6 30-8" fill="none" stroke="#231A29" strokeWidth="1.6" strokeLinecap="round" /></svg>
-              <div className="sig-line" />
-              <p className="sig-name">{d.firma.nombre}</p>
-              <p className="muted sig-role">{d.firma.cargo}, RUT <span className="num">{maskRut(d.firma.rut)}</span></p>
-            </section>
-          )}
-
-          <section className="vd-card">
-            <h2 className="vd-h">Trazabilidad</h2>
-            <ol className="trace">
-              {v.estado === 'programada' && (<><li className="now"><b>Visita programada</b><span>{longDate(parseDMY(v.fecha))}</span></li><li className="next"><b>Inicio de la visita</b><span>Pendiente</span></li></>)}
-              {cancelada && <li className="off"><b>{v.estado === 'cancelada_admin' ? 'Cancelada por un administrador' : 'Visita cancelada'}</b><span>{longDate(parseDMY(v.fecha))}</span></li>}
-              {v.estado === 'completada' && d && (
-                <>
-                  <li><b>Inicio de la visita</b><span className="num">{d.inicio}</span></li>
-                  <li><b>Trabajo registrado</b><span>{d.trabajos.length} trabajos, {d.fotos.length} fotos y {d.videos.length} videos</span></li>
-                  <li className="done"><b>Término y firma de conformidad</b><span className="num">{d.fin}</span></li>
-                </>
-              )}
-              {v.estado === 'completada' && !d && <li className="done"><b>Visita completada</b><span>{longDate(parseDMY(v.fecha))}</span></li>}
-            </ol>
-          </section>
-        </aside>
+        <Seccion n={5} id="sec5" titulo="Conformidad de la tienda">
+          {firma ? (
+            <div className="acta-firma">
+              <figure className="acta-firma-caja">
+                {/* eslint-disable-next-line @next/next/no-img-element -- archivo con sesión servido por /api/archivo */}
+                <img src={firma.miniUrl || firma.url} alt={`Firma de ${firma.descripcion || 'la tienda'}`} loading="lazy" />
+                <figcaption className="acta-rot">Firma del responsable de tienda</figcaption>
+              </figure>
+              <dl className="acta-firma-datos">
+                <div><dt>Nombre</dt><dd><b>{firma.descripcion || v.responsable?.nombre || '—'}</b></dd></div>
+                <div><dt>RUT</dt><dd className="num">{firma.rut || '—'}</dd></div>
+                <div><dt>Firmado el</dt><dd className="num">{firma.fecha ? firma.fecha.replace(/-/g, '/').replace(' ', ' · ') : '—'}</dd></div>
+                {firma.url && <div><dt /><dd><a className="link" href={descargar(firma.url)}>Descargar firma</a></dd></div>}
+              </dl>
+            </div>
+          ) : <p className="muted">La visita no tiene firma registrada.</p>}
+          <p className="muted acta-constancia">Con su firma, la tienda deja constancia de la visita y de los trabajos descritos en esta acta.</p>
+        </Seccion>
       </div>
+
+      {lb !== null && <Lightbox items={galeria} index={lb} onIndex={setLb} onClose={() => setLb(null)} />}
     </section>
   );
 }
