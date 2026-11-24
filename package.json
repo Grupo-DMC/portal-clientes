@@ -35,6 +35,11 @@
     "typescript": "^5"
   },
   "overrides": {
-    "@azure/msal-node": "7.1.2"
+    "@azure/msal-node": "7.1.2",
+    "https-proxy-agent": "^7.0.6",
+    "http-proxy-agent": "^7.0.2"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }
