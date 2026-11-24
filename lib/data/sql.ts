@@ -74,21 +74,36 @@ export function ident(nombre: string): string {
 export type Parametro = [nombre: string, tipo: sql.ISqlType | (() => sql.ISqlType), valor: unknown];
 
 /**
- * El portal solo lee vistas del esquema `portal` (portal.v_*). La cuenta SQL no
- * tiene permiso sobre las tablas (`clientes`, `tecnico`, `seguridad`; antes `dmc`);
- * esto lo deja escrito también en la app.
+ * El portal solo lee vistas del esquema `portal` (portal.v_*), que ya excluyen
+ * lo interno (comentario_interno, archivos internos). OJO: hoy la cuenta SQL sí
+ * tiene permisos sobre las tablas (`clientes`, `tecnico`, `seguridad`), así que
+ * esta regla de la app es la que evita leerlas. Excepción: `binarios`.
  */
-export function asegurarSoloPortal(texto: string): void {
+export function asegurarSoloPortal(texto: string, binarios: readonly TablaBinaria[] = []): void {
   const sinTextos = texto.replace(/'(?:[^']|'')*'/g, "''");
-  const ajeno = sinTextos.match(/\[?\b(clientes|tecnico|seguridad|dmc|sys|INFORMATION_SCHEMA)\]?\s*\.\s*\[?[A-Za-z_]/i);
-  if (ajeno) throw new SentenciaNoPermitida(`referencia fuera del esquema portal («${ajeno[0]}»)`);
+  const permitidas = new Set(binarios.map((t) => t.toLowerCase()));
+  for (const m of sinTextos.matchAll(/\[?\b(clientes|tecnico|seguridad|dmc|sys|INFORMATION_SCHEMA)\]?\s*\.\s*\[?([A-Za-z_]\w*)\]?/gi)) {
+    if (!permitidas.has(`${m[1]}.${m[2]}`.toLowerCase())) {
+      throw new SentenciaNoPermitida(`referencia fuera del esquema portal («${m[0]}»)`);
+    }
+  }
   const objetos = [...sinTextos.matchAll(/\b(?:FROM|JOIN|APPLY)\s+(\[?[A-Za-z_][\w]*\]?(?:\s*\.\s*\[?[A-Za-z_][\w]*\]?)?)/gi)].map((m) =>
     m[1].replace(/[\[\]\s]/g, "")
   );
   for (const objeto of objetos) {
-    if (!/^portal\.v_\w+$/i.test(objeto)) throw new SentenciaNoPermitida(`solo se leen vistas portal.v_* («${objeto}»)`);
+    if (!/^portal\.v_\w+$/i.test(objeto) && !permitidas.has(objeto.toLowerCase())) {
+      throw new SentenciaNoPermitida(`solo se leen vistas portal.v_* («${objeto}»)`);
+    }
   }
 }
+
+/**
+ * Únicas tablas fuera de portal.v_* que el portal puede leer: la columna
+ * `contenido` (el binario) de fotos, videos y firmas, que las vistas no traen.
+ * Solo las usa la descarga de archivos (lib/data/portal/archivos.ts), siempre
+ * con un EXISTS contra portal.v_visita_archivo filtrado por cliente.
+ */
+export type TablaBinaria = "tecnico.visita_foto" | "tecnico.visita_video" | "tecnico.visita_firma";
 
 /** id de cliente utilizable: entero positivo seguro. Sin él no se consulta nada. */
 export function idCliente(valor: unknown): number {
@@ -110,10 +125,15 @@ export function idCliente(valor: unknown): number {
  *
  * Además, el SELECT debe filtrar por cliente_id él mismo (lo hace lib/data/portal/db.ts).
  */
-export async function consultaDeCliente<T>(clienteId: number, texto: string, params: Parametro[] = []): Promise<T[]> {
+export async function consultaDeCliente<T>(
+  clienteId: number,
+  texto: string,
+  params: Parametro[] = [],
+  binarios: readonly TablaBinaria[] = []
+): Promise<T[]> {
   const id = idCliente(clienteId);
   asegurarSoloLectura(texto);
-  asegurarSoloPortal(texto);
+  asegurarSoloPortal(texto, binarios);
   if (params.some(([nombre]) => nombre === "__cliente_id")) throw new Error("El parámetro __cliente_id está reservado.");
   const pool = await getPool();
   const req = pool.request();

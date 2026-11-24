@@ -36,27 +36,10 @@ export function envNumero(nombre: string, porDefecto: number): number {
   return n;
 }
 
-// ── Fuente de datos ─────────────────────────────────────────────────────────
+// ── Base de datos ───────────────────────────────────────────────────────────
 //
-// Diferencia con sys_tecnicos: allá no hay modo de demostración (todo sale de
-// SQL Server). El portal cliente todavía no tiene confirmado su esquema, así que
-// la fuente se elige con una sola variable y la UI no se entera:
-//
-//   DATA_SOURCE=mock  datos de ejemplo en memoria (lib/pcliente/data.js, lib/data.ts)
-//   DATA_SOURCE=db    SQL Server, solo lectura (lib/data/portal/db.ts)
-
-export type FuenteDatos = "mock" | "db";
-export const FUENTES: readonly FuenteDatos[] = ["mock", "db"];
-
-/** La fuente configurada. Sin la variable: mock (se avisa al arrancar en producción). */
-export function fuenteDeDatos(): FuenteDatos {
-  const valor = env("DATA_SOURCE")?.toLowerCase();
-  if (valor === undefined) return "mock";
-  if (!(FUENTES as readonly string[]).includes(valor)) {
-    throw new Error(`DATA_SOURCE debe ser "mock" o "db"; llegó "${valor}".`);
-  }
-  return valor as FuenteDatos;
-}
+// La app lee y valida todo contra DMC_Core (SQL Server). No hay modo de datos de
+// ejemplo: sin credenciales completas no arranca.
 
 /** true cuando hay datos suficientes para abrir el pool de SQL Server. */
 export function hayConexionSql(): boolean {

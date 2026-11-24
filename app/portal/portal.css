@@ -787,3 +787,131 @@ a.btn-out{text-decoration:none}
 }
 @keyframes ring{20%{transform:rotate(14deg)}40%{transform:rotate(-12deg)}60%{transform:rotate(8deg)}80%{transform:rotate(-4deg)}}
 @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes acta-brillo{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* OJO: todo lo que se agregue al portal va DENTRO de .pc{…}. Fuera de él, el reset
+   `.pc *:not(svg,svg *){all:revert}` (especificidad 0,1,1) gana a una regla de una sola
+   clase y la anula entera: por eso la firma se veía a 1400 px y el video sin tope. */
+.pc{
+/* Visitas: filtros de servidor (sucursal y fecha) */
+.v-filtros{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;padding:14px 16px;background:var(--paper);border:1px solid var(--line);border-radius:14px}
+.v-f{display:grid;gap:4px;font-size:.8125rem;color:var(--muted)}
+.v-f .input{height:40px;min-width:170px;color:var(--ink)}
+.v-f select.input{min-width:260px}
+.v-f-actions{display:flex;gap:8px}
+
+/* Detalle de visita: datos reales */
+.motivos{margin:12px 0 0;display:grid;gap:6px}
+.motivos div{display:grid;grid-template-columns:170px 1fr;gap:10px;font-size:.875rem}
+.motivos dt{color:var(--muted)}
+.motivos dd{margin:0;font-weight:500}
+.work-detail{margin:0 0 10px;font-size:.875rem;line-height:1.5;color:var(--muted)}
+.probs{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.probs li{padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:.875rem}
+.probs li.is-open{border-color:var(--amber);background:var(--amber-soft)}
+.probs p{margin:6px 0 0;line-height:1.5}
+.prob-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.thumb:disabled,.vthumb:disabled{cursor:default}
+.thumb-empty{display:grid;place-items:center;width:100%;height:100%;color:rgba(255,255,255,.5)}
+.vthumb video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.lb-tools{display:flex;gap:8px}
+.lb-video{width:auto;max-width:88vw;max-height:calc(100vh - 170px);border-radius:10px;background:#000;display:block}
+.sig-fig{margin:0 0 14px}
+.sig-fig:last-child{margin-bottom:0}
+.sig-img{display:block;max-width:240px;width:100%;height:auto;background:#fff;border-radius:6px}
+@media (max-width:760px){
+  .v-f,.v-f .input,.v-f select.input{width:100%;min-width:0}
+  .motivos div{grid-template-columns:1fr;gap:2px}
+}
+
+/* Pantalla de mantenimiento para cuentas DMC (MAINTENANCE_DMC_USERS) */
+.mant{min-height:100vh;display:grid;place-items:center;padding:24px}
+.mant-card{max-width:440px;width:100%;background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:32px 28px;text-align:center;display:grid;gap:14px;justify-items:center}
+.mant-logo{width:150px;height:auto}
+.mant-card h1{margin:4px 0 0;font-family:var(--font-display);font-size:1.5rem;font-weight:600;color:var(--purple-deep)}
+.mant-card p{margin:0;color:var(--muted);line-height:1.55}
+
+/* Acta de la visita (secciones 01–05 del PDF) */
+.acta-kicker{margin:0 0 6px;font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--purple)}
+.acta-resumen{margin:18px 0 16px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--paper);border:1px solid var(--line);border-radius:14px}
+.acta-resumen div{padding:12px 16px;border-left:1px solid var(--line);min-width:0}
+.acta-resumen div:first-child{border-left:0}
+.acta-resumen dt{font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.acta-resumen dd{margin:4px 0 0;font-weight:600}
+.acta-resumen dd.is-warn{color:var(--amber)}
+.acta-cuerpo{display:grid;gap:16px}
+.acta-h{display:flex;align-items:baseline;gap:10px}
+.acta-n{color:var(--purple);font-weight:600}
+.acta-rot{display:block;margin-bottom:6px;font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.probs .acta-rot{display:inline;margin:0 6px 0 0}
+.acta-campo{margin-bottom:16px}
+.acta-campo:last-child{margin-bottom:0}
+.acta-01{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:20px;align-items:start}
+.acta-chips{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.acta-chips li{padding:4px 10px;border-radius:8px;background:var(--lilac-soft);color:var(--purple-deep);font-size:.8125rem;font-weight:600}
+.acta-tareas{list-style:none;margin:0;padding:0;border-top:1.5px solid var(--ink)}
+.acta-tareas li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;padding:10px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.acta-tareas p{margin:4px 0 0;font-size:.8125rem;line-height:1.5}
+.acta-tn{font-weight:600;color:var(--purple-deep)}
+.acta-detalle{padding:12px 14px;border:1.5px solid var(--ink);border-radius:10px}
+.acta-detalle p{margin:0;font-weight:500;line-height:1.5}
+.acta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:10px}
+.acta-grid-v{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.acta-sub{margin:18px 0 0;font-size:.875rem;font-weight:600}
+.acta-foto{margin:0;min-width:0}
+.acta-foto .thumb{width:100%;display:block}
+.acta-foto.is-big .thumb{aspect-ratio:3/4}
+.acta-foto figcaption{margin-top:6px;font-size:.8125rem;line-height:1.35}
+.thumb.is-loading{background:linear-gradient(90deg,#EEE8F1 25%,#F7F3F9 50%,#EEE8F1 75%);background-size:200% 100%;animation:acta-brillo 1.2s linear infinite}
+.thumb.is-loading img{opacity:0}
+.thumb img{transition:opacity .2s,transform .25s}
+.acta-poster{width:100%;display:grid;place-items:center;background:linear-gradient(135deg,var(--purple-deep),var(--purple))}
+.acta-poster .play{position:static;width:48px;height:48px;display:grid;place-items:center;border-radius:50%;background:rgba(255,255,255,.18);color:#fff}
+.acta-poster-meta{position:absolute;right:8px;bottom:6px;color:#fff;font-size:.75rem}
+.acta-datos{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px}
+.acta-datos div{padding:10px 0;border-bottom:1px solid var(--line);min-width:0}
+.acta-datos div.is-wide{grid-column:1 / -1}
+.acta-datos dt{font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.acta-datos dd{margin:4px 0 0;overflow-wrap:anywhere}
+.acta-firma{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px;align-items:end}
+.acta-firma-caja{margin:0;border:1px solid var(--line);border-radius:12px;padding:12px 14px 10px;background:#fff}
+.acta-firma-caja img{display:block;width:100%;height:120px;object-fit:contain;border-bottom:1.5px solid var(--muted);padding-bottom:6px}
+.acta-firma-caja figcaption{margin:8px 0 0}
+.acta-firma-datos{margin:0;display:grid;gap:10px}
+.acta-firma-datos div{display:grid;grid-template-columns:90px minmax(0,1fr);gap:10px;align-items:baseline}
+.acta-firma-datos dt{font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.acta-firma-datos dd{margin:0}
+.acta-constancia{margin:14px 0 0;font-size:.8125rem}
+.acta-cuenta{font-size:.8125rem}
+.acta-menu{min-width:300px}
+.acta-menu a{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:8px;color:var(--ink);text-decoration:none}
+.acta-menu a span{display:grid;gap:2px}
+.acta-menu a .muted{font-size:.8125rem}
+.acta-menu a:hover,.acta-menu a:focus-visible{background:var(--lilac-soft);outline:none}
+.acta-menu-nota{margin:4px 10px 6px;font-size:.75rem}
+.skel{border-radius:14px;background:linear-gradient(90deg,#EEE8F1 25%,#F7F3F9 50%,#EEE8F1 75%);background-size:200% 100%;animation:acta-brillo 1.2s linear infinite}
+.acta-skel{display:grid;gap:16px}
+@media (max-width:760px){
+  .acta-resumen{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acta-resumen div:nth-child(3){border-left:0}
+  .acta-resumen div:nth-child(n+3){border-top:1px solid var(--line)}
+  .acta-01{grid-template-columns:1fr}
+  .acta-datos{grid-template-columns:1fr}
+  .acta-firma{grid-template-columns:1fr}
+  .acta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acta-grid-v{grid-template-columns:1fr}
+  .vd-actions,.vd-actions .menu,.vd-actions .btn-pri{width:100%}
+  .vd-actions .btn-pri{justify-content:center}
+  .acta-menu{left:0;right:0;min-width:0}
+}
+@media (prefers-reduced-motion:reduce){.thumb.is-loading,.skel{animation:none}}
+
+/* Avatar de la cuenta en la barra superior y estados de la foto de perfil */
+.mbar-me{display:grid;border-radius:50%;text-decoration:none}
+.mbar-me:hover .avatar{border-color:var(--lilac)}
+.pf-photo .avatar{position:relative}
+.pf-photo.is-busy .avatar{opacity:.55}
+.pf-status{margin:6px 0 0;font-size:.8125rem}
+.pf-status.is-error{color:var(--red)}
+.pf-status.is-ok{color:var(--green)}
+}

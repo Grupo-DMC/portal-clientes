@@ -48,7 +48,10 @@ export default function Sidebar({ open, onClose }) {
         </div>
 
         <div className="side-client">
-          <div className="side-client-logo" aria-hidden="true">{cliente.nombre[0]}</div>
+          <div className="side-client-logo" aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element -- logo del cliente servido por la app */}
+            {cliente.logo ? <img src={cliente.logo} alt="" /> : cliente.nombre[0]}
+          </div>
           <div className="side-client-text">
             <strong>{cliente.nombre}</strong>
             <span className="num">RUT {cliente.rut}</span>

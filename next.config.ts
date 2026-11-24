@@ -23,7 +23,8 @@ const nextConfig: NextConfig = {
   // `.next` de quien esté corriendo `npm run dev`.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   serverExternalPackages: ["mssql", "tedious"],
-  outputFileTracingIncludes: { "/api/visita/acta/[folio]": ["./public/DMC-logo.png"] },
+  // El PDF del acta lee el logo y la tipografía Inter del disco.
+  outputFileTracingIncludes: { "/api/visita/acta/[folio]": ["./public/DMC-logo.png", "./public/fonts/*.ttf"] },
   poweredByHeader: false,
   async headers() {
     return [

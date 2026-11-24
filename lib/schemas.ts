@@ -14,6 +14,19 @@ export const loginSchema = z.object({
   remember: z.boolean().default(false),
 });
 
+/** Clave nueva del portal (cambio obligatorio). */
+export const cambioClaveSchema = z
+  .object({
+    nueva: z
+      .string()
+      .min(10, "Usa al menos 10 caracteres.")
+      .max(72, "Usa como máximo 72 caracteres.")
+      .regex(/[A-Za-zÑñ]/, "Incluye al menos una letra.")
+      .regex(/\d/, "Incluye al menos un número."),
+    confirmar: z.string(),
+  })
+  .refine((d) => d.nueva === d.confirmar, { message: "Las claves no coinciden.", path: ["confirmar"] });
+
 export const clientKeySchema = z
   .string()
   .min(8, "Al menos 8 caracteres")

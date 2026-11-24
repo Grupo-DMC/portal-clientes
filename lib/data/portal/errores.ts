@@ -1,7 +1,7 @@
 // Errores de la capa de datos del portal que la UI sabe explicar.
 
 /**
- * DATA_SOURCE=db pero el mapeo de alguna sección obligatoria sigue sin
+ * El mapeo de alguna sección obligatoria sigue sin
  * confirmar (lib/data/portal/mapeo.ts). No es un fallo de conexión: falta
  * decir de qué tablas o vistas sale cada dato (docs/DATOS_PENDIENTES.md).
  */

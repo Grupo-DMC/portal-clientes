@@ -1,5 +1,5 @@
 // Contrato de datos del portal cliente: lo que la capa de datos (lib/data/portal)
-// entrega a la UI, sea cual sea la fuente (DATA_SOURCE=mock|db). Equivale a
+// entrega a la UI, que sale de DMC_Core. Equivale a
 // sys_tecnicos/lib/contratos/*: tipos de entrada/salida, sin lógica.
 //
 // La forma calza con lo que hoy consume PortalProvider (lib/pcliente/store.js),
@@ -71,6 +71,8 @@ export interface VisitasResumenDto {
 // ── Sucursales ─────────────────────────────────────────────────────────────
 
 export interface SucursalPortalDto {
+  /** Id estable de la sucursal (portal.v_sucursal.sucursal_id). Sirve de filtro en Visitas. */
+  id?: string;
   codigo: string | null;
   nombre: string;
   marca: string;
@@ -85,6 +87,18 @@ export interface SucursalPortalDto {
   estado: EstadoSucursal | string;
   /** Zona del cliente a la que pertenece el local; null = sin zona. */
   zona?: string | null;
+  // Datos de portal.v_sucursal (solo db).
+  direccion?: string | null;
+  activo?: boolean;
+  /** 'DD-MM-YYYY' */
+  fechaInstalacion?: string | null;
+  enGarantia?: boolean | null;
+  garantiaMeses?: number | null;
+  /** 'DD-MM-YYYY', calculado: fecha_instalacion + garantia_meses. */
+  garantiaVence?: string | null;
+  visitasRealizadas?: number | null;
+  /** 'DD-MM-YYYY' */
+  ultimaVisita?: string | null;
 }
 
 // ── Visitas ────────────────────────────────────────────────────────────────
@@ -123,6 +137,85 @@ export interface VisitaPortalDto {
   motivo: string;
   estado: EstadoVisita | string;
   detalle?: VisitaDetalleDto;
+  sucursalId?: string;
+  marca?: string;
+  /** Conteos de portal.v_visita (solo db). */
+  fotos?: number;
+  videos?: number;
+  problemas?: number;
+}
+
+/** Filtros de la lista de visitas. Llegan por la URL y solo ACOTAN: el cliente sale siempre de la sesión. */
+export interface FiltrosVisitas {
+  sucursalId?: string;
+  /** 'YYYY-MM-DD' (incluida) */
+  desde?: string;
+  /** 'YYYY-MM-DD' (incluida) */
+  hasta?: string;
+}
+
+export type TipoArchivoVisita = "FOTO" | "VIDEO" | "FIRMA_TECNICO" | "FIRMA_TIENDA";
+
+export interface ArchivoVisitaDto {
+  tipo: TipoArchivoVisita | string;
+  id: string;
+  mime: string;
+  bytes: number | null;
+  duracionSeg: number | null;
+  /** 'DD-MM-YYYY HH:mm' */
+  fecha: string | null;
+  descripcion: string | null;
+  problemaId: string | null;
+  /** Descarga por el endpoint del portal (/api/archivo/:tipo/:id); null en los datos de ejemplo. */
+  url: string | null;
+  /** Miniatura liviana (fotos y firmas): /api/archivo/:tipo/:id?mini=1. */
+  miniUrl?: string | null;
+  /** Solo firmas: RUT de quien firmó (tecnico.visita_firma.rut, filtrado por la vista). */
+  rut?: string | null;
+}
+
+/** Detalle completo de una visita, de portal.v_visita y sus vistas hijas. */
+export interface VisitaCompletaDto {
+  folio: string;
+  estado: EstadoVisita | string;
+  /** 'DD-MM-YYYY' */
+  fecha: string;
+  /** 'YYYY-MM-DD' */
+  fechaISO?: string | null;
+  sucursal: string;
+  sucursalId: string | null;
+  /** Código interno de la sucursal y su mall (portal.v_sucursal). */
+  sucursalCodigo?: string | null;
+  mall?: string | null;
+  marca: string;
+  direccion: string;
+  comuna: string;
+  region: string;
+  motivo: string;
+  motivoReal: string | null;
+  trabajoSolicitado: string;
+  tecnico: string;
+  tecnicoAyudante: string | null;
+  /** 'HH:mm' */
+  horaInicio: string | null;
+  horaTermino: string | null;
+  duracionMin: number | null;
+  responsable: { nombre: string; cargo: string | null } | null;
+  observaciones: string | null;
+  motivos: { ambito: "PLAN" | "REAL" | string; motivo: string }[];
+  trabajos: { trabajo: string; detalle: string | null; subtrabajos: { etiqueta: string; cantidad: number }[]; resumen: string | null }[];
+  problemas: {
+    id: string;
+    tipo: string;
+    estado: string;
+    estadoCodigo: string;
+    descripcion: string | null;
+    solucion: string | null;
+    items: string | null;
+    /** 'DD-MM-YYYY' */
+    resueltoEn: string | null;
+  }[];
+  archivos: ArchivoVisitaDto[];
 }
 
 // ── Credenciales de locales y reportes ─────────────────────────────────────
@@ -243,11 +336,13 @@ export interface DespachoDto {
 export interface ContextoPortal {
   /** Correo de la cuenta del portal (id de la sesión). */
   email: string;
-  /** Cliente al que pertenece la cuenta, en los datos de ejemplo (mock). */
+  /** cliente_id de la cuenta, como texto. */
   clienteId: string;
   /** El mismo cliente en la base (clientes.cliente.id, expuesto como cliente_id en portal.v_*). null = sin vincular. */
   clienteIdBd: number | null;
   /** Nombre y rol de la cuenta: la base del portal no expone usuarios (perfil sale de la sesión). */
   nombre: string;
   rol: string;
+  /** Cabecera del cliente, cuando la sesión ya la trae (db: seguridad.usuario_cliente → clientes.cliente). */
+  cliente?: ClientePortalDto | null;
 }

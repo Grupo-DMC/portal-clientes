@@ -4,7 +4,7 @@ import { consulta, consultaDeCliente } from "@/lib/data/sql";
 import { MAPEO } from "@/lib/data/portal/mapeo";
 import { estadoDelMapeo } from "@/lib/data/portal/db";
 import { describirDestinoSql } from "@/lib/db/config";
-import { enProduccion, env, exigirConexionSql, fuenteDeDatos, hayConexionSql } from "@/lib/env";
+import { enProduccion, env, exigirConexionSql } from "@/lib/env";
 import { log } from "@/lib/log";
 
 // Diagnóstico del despliegue (réplica de sys_tecnicos/app/api/salud): dice si
@@ -16,7 +16,7 @@ import { log } from "@/lib/log";
 //   curl -H "Authorization: Bearer $HEALTHCHECK_TOKEN" http://localhost:3000/api/salud
 //
 // Diferencias con la referencia: en vez de contar catálogos de visitas,
-// informa la fuente de datos (DATA_SOURCE), si la cuenta SQL puede escribir
+// informa si la cuenta SQL puede escribir
 // (no debería: el portal es de solo lectura) y qué secciones del mapeo faltan.
 
 export const runtime = "nodejs";
@@ -48,19 +48,8 @@ export async function GET(req: NextRequest) {
   if (!autorizado(req, esperado)) return new NextResponse(null, { status: 401 });
 
   const entorno = enProduccion ? "produccion" : "desarrollo";
-  let fuente: string;
-  try {
-    fuente = fuenteDeDatos();
-  } catch (err) {
-    log.error("/api/salud: DATA_SOURCE no válido", { err });
-    return NextResponse.json({ ok: false, entorno, error: "DATA_SOURCE no válido. Revisa el log del despliegue." }, { status: 503 });
-  }
+  const fuente = "DMC_Core";
   const mapeo = estadoDelMapeo();
-
-  // En mock sin credenciales no hay nada que comprobar: la app funciona sola.
-  if (fuente === "mock" && !hayConexionSql()) {
-    return NextResponse.json({ ok: true, entorno, fuente, bd: { configurada: false } });
-  }
 
   try {
     exigirConexionSql();

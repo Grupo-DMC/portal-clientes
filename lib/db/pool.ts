@@ -53,6 +53,37 @@ class PoolConReinicio extends sql.ConnectionPool {
 }
 
 let poolPromesa: Promise<sql.ConnectionPool> | null = null;
+let poolEscrituraPromesa: Promise<sql.ConnectionPool> | null = null;
+
+/**
+ * Pool aparte, SOLO para las cuentas (lib/server/cuentas.ts):
+ * registrar intentos, último acceso y cambio de clave en seguridad.*. Va sin
+ * ApplicationIntent=ReadOnly (en un Availability Group la réplica de lectura
+ * rechazaría la escritura) y con pocas conexiones. No fija session_context:
+ * esas sentencias no leen datos de clientes.
+ */
+export function getPoolEscritura(): Promise<sql.ConnectionPool> {
+  if (!poolEscrituraPromesa) {
+    const base = getSqlConfig();
+    poolEscrituraPromesa = new sql.ConnectionPool({
+      ...base,
+      options: { ...base.options, readOnlyIntent: false, appName: "sys_clientes-login" },
+      pool: { ...base.pool, max: 2 },
+    })
+      .connect()
+      .then((pool) => {
+        pool.on("error", () => {
+          poolEscrituraPromesa = null;
+        });
+        return pool;
+      })
+      .catch((err) => {
+        poolEscrituraPromesa = null;
+        throw err;
+      });
+  }
+  return poolEscrituraPromesa;
+}
 
 export function getPool(): Promise<sql.ConnectionPool> {
   if (!poolPromesa) {
