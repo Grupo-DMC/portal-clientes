@@ -4,10 +4,12 @@ import { Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Catalogos, Cliente, Contacto, Direccion, Equipo, Persona } from "@/lib/data";
-import { checkRut, COMUNAS, REGIONES } from "@/lib/format";
+import { zonaId } from "@/lib/calc";
+import { addM, checkRut, COMUNAS, REGIONES, TODAY_ISO } from "@/lib/format";
 import { ipSchema } from "@/lib/schemas";
 import { useStore } from "@/components/store";
 import { Field, Modal, ModalActions, Seg, Select, Switch, useToast } from "@/components/ui";
+import { usePanelUser } from "./PanelUser";
 
 /** Desplegable de un catálogo con «+ Agregar…» (no pierde lo que lleva el formulario). */
 export function CatSelect({ cat, label, value, onChange, keep }: { cat: keyof Catalogos; label: string; value: string; onChange: (v: string) => void; keep?: string }) {
@@ -40,7 +42,7 @@ export function NewClienteModal({ onClose }: { onClose: () => void }) {
   const save = () => {
     if (!f.rs.trim() || rc !== true) return toast(rc === false ? "El dígito verificador del RUT no corresponde" : "Completa razón social y RUT");
     const id = "c" + Date.now(), marca = f.marca.trim() || f.rs.trim();
-    mut((d) => { d.clients.push({ id, tipo: f.tipo, rs: f.rs.trim(), rutStr: f.rut.trim(), giro: "", dte: "", pago: "30 días", marcas: [marca], activo: true, plan: false, planMeses: 12, planDesde: "2026-10-05", calTodas: false, calSuc: [], calVence: "2027-10-05", zonas: [], dirs: [] }); }, `Cliente creado con la marca “${marca}”`);
+    mut((d) => { d.clients.push({ id, tipo: f.tipo, rs: f.rs.trim(), rutStr: f.rut.trim(), giro: "", dte: "", pago: "30 días", marcas: [marca], activo: true, plan: false, planMeses: 12, planDesde: TODAY_ISO, calTodas: false, calSuc: [], calVence: addM(TODAY_ISO, 12), zonas: [], dirs: [] }); }, `Cliente creado con la marca “${marca}”`);
     onClose(); router.push(`/panel/clientes/${id}`);
   };
   return (
@@ -69,7 +71,7 @@ export function NewSucursalModal({ cli, onClose }: { cli: Cliente; onClose: () =
     if (!f.n.trim() || !f.cod.trim()) return toast("Completa nombre y código de tienda");
     const id = "s" + Date.now(), m = db.malls.find((x) => x.id === f.mall)!;
     mut((d) => {
-      d.sucursales.push({ id, cli: cli.id, marca: f.marca, cod: f.cod.trim().toUpperCase(), n: f.n.trim(), mall: f.mall, calle: "", reg: m.reg, com: m.com, local: "", inst: "2026-10-05", meses: 12, cred: "Sin clave", activo: true, zona: "", ultimoAcceso: null });
+      d.sucursales.push({ id, cli: cli.id, marca: f.marca, cod: f.cod.trim().toUpperCase(), n: f.n.trim(), mall: f.mall, calle: "", reg: m.reg, com: m.com, local: "", inst: TODAY_ISO, meses: 12, cred: "Sin clave", activo: true, zona: "", ultimoAcceso: null });
       d.inst[id] = [{ id: id + "a1", n: "Entrada principal", eq: [] }]; d.personal[id] = [];
     }, "Sucursal creada");
     onClose(); router.push(`/panel/sucursales/${id}`);
@@ -79,7 +81,7 @@ export function NewSucursalModal({ cli, onClose }: { cli: Cliente; onClose: () =
       <Field label="Marca"><Select value={f.marca} onChange={(v) => setF({ ...f, marca: v })} opts={cli.marcas} /></Field>
       <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(0,1fr) 140px" }}>
         <Field label="Nombre de la sucursal"><input className="input" value={f.n} onChange={(e) => setF({ ...f, n: e.target.value })} maxLength={100} /></Field>
-        <Field label="Código de tienda"><input className="input" value={f.cod} placeholder="AM-050" onChange={(e) => setF({ ...f, cod: e.target.value })} maxLength={12} /></Field>
+        <Field label="Código de tienda"><input className="input" value={f.cod} placeholder="PU-050" onChange={(e) => setF({ ...f, cod: e.target.value })} maxLength={12} /></Field>
       </div>
       <Field label="Mall (puedes cambiar a calle en la ficha)"><Select value={f.mall} onChange={(v) => setF({ ...f, mall: v })} opts={db.malls.map((m) => ({ v: m.id, l: m.n }))} /></Field>
       <Actions onClose={onClose} onSave={save} label="Crear sucursal" />
@@ -169,13 +171,27 @@ export function ContactoModal({ cli, init, onClose }: { cli: Cliente; init?: Con
 export function ZonaModal({ cli, idx, onClose }: { cli: Cliente; idx: number; onClose: () => void }) {
   const { mut } = useStore();
   const toast = useToast();
-  const cur = idx >= 0 ? cli.zonas[idx] : { n: "", regs: [] as string[] };
+  const cur = idx >= 0 ? cli.zonas[idx] : { n: "", regs: [] as string[], comunas: [] as string[] };
   const [n, setN] = useState(cur.n);
   const [regs, setRegs] = useState<string[]>([...cur.regs]);
-  const others = cli.zonas.filter((_, i) => i !== idx).flatMap((z) => z.regs.map((r) => [r, z.n] as const));
+  const [comunas, setComunas] = useState<string[]>([...(cur.comunas ?? [])]);
+  // Una región solo se bloquea si otra zona la abarca completa; las zonas por comunas pueden compartir región.
+  const others = cli.zonas.filter((z, i) => i !== idx && !z.comunas?.length).flatMap((z) => z.regs.map((r) => [r, z.n] as const));
+  // Comunas ofrecidas: las del catálogo de las regiones elegidas más las que la zona ya tiene.
+  const comunasOfrecidas = [...new Set([...regs.flatMap((r) => COMUNAS[r] ?? []), ...comunas])];
   const save = () => {
     if (!n.trim()) return toast("Ingresa el nombre de la zona");
-    mut((d) => { const c = d.clients.find((x) => x.id === cli.id)!; if (idx >= 0) c.zonas[idx] = { n: n.trim(), regs }; else c.zonas.push({ n: n.trim(), regs }); }, "Zona guardada");
+    if (!regs.length) return toast("Elige al menos una región");
+    const nom = n.trim(), com = comunas.filter((c) => comunasOfrecidas.includes(c));
+    mut((d) => {
+      const c = d.clients.find((x) => x.id === cli.id)!;
+      if (idx >= 0) {
+        // Se conserva el id (lo usan los usuarios del portal) y las sucursales que apuntaban al nombre anterior siguen en la zona.
+        const antes = c.zonas[idx];
+        c.zonas[idx] = { ...antes, id: zonaId(antes), n: nom, regs, comunas: com.length ? com : undefined };
+        if (antes.n !== nom) d.sucursales.forEach((s) => { if (s.cli === c.id && s.zona === antes.n) s.zona = nom; });
+      } else c.zonas.push({ n: nom, regs, ...(com.length ? { comunas: com } : {}) });
+    }, "Zona guardada");
     onClose();
   };
   return (
@@ -193,8 +209,20 @@ export function ZonaModal({ cli, idx, onClose }: { cli: Cliente; idx: number; on
           );
         })}
       </div>
+      {comunasOfrecidas.length > 0 && (
+        <>
+          <div className="flex justify-between text-xs text-neutral-700"><span>Comunas (opcional: sin elegir, la zona abarca las regiones completas)</span><span>{comunas.length} elegidas</span></div>
+          <div className="grid max-h-[180px] grid-cols-2 gap-x-4 overflow-auto border-t border-[var(--color-divider)]">
+            {comunasOfrecidas.map((c) => (
+              <label key={c} className="flex cursor-pointer items-center gap-2 border-b border-neutral-300 px-[2px] py-2 text-sm">
+                <input type="checkbox" className="chk" checked={comunas.includes(c)} onChange={() => setComunas((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]))} />{c}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
       <div className="flex justify-between gap-2">
-        {idx >= 0 && <button className="btn btn-ghost" onClick={() => { mut((d) => { d.clients.find((x) => x.id === cli.id)!.zonas.splice(idx, 1); }, "Zona desactivada"); onClose(); }}>Desactivar zona</button>}
+        {idx >= 0 && <button className="btn btn-ghost" onClick={() => { mut((d) => { const c = d.clients.find((x) => x.id === cli.id)!; const z = c.zonas[idx]; c.zonas.splice(idx, 1); d.sucursales.forEach((s) => { if (s.cli === c.id && s.zona === z.n) s.zona = ""; }); }, "Zona desactivada"); onClose(); }}>Desactivar zona</button>}
         <div className="flex-1" />
         <button className="btn btn-secondary" onClick={onClose}>Cancelar</button>
         <button className="btn btn-primary" onClick={save}>Guardar zona</button>
@@ -236,34 +264,35 @@ const KM = { antena: "EVO-AM 58 kHz Dual", contador: "Vision 3D Count v2", otro:
 export function EquipoModal({ sucId, accId, init, onClose }: { sucId: string; accId: string; init?: Equipo; onClose: () => void }) {
   const { mut } = useStore();
   const toast = useToast();
+  const user = usePanelUser();
   const [f, setF] = useState<EqForm>(init ? { ...structuredClone(init), acc: accId, isNew: false } : {
-    id: "", acc: accId, isNew: true, kind: "antena", modelo: KM.antena, cant: 1, remota: true, uuid: "", mac: "", serie: "", fecha: "2026-10-05", ip: "192.168.", dhcp: false, destino: "Plataforma", url: "", tipo: "Alarma sonora", hist: [],
+    id: "", acc: accId, isNew: true, kind: "antena", modelo: KM.antena, cant: 1, remota: true, uuid: "", mac: "", serie: "", fecha: TODAY_ISO, ip: "192.168.", dhcp: false, destino: "Plataforma", url: "", tipo: "Alarma sonora", hist: [],
   });
   const set = <K extends keyof EqForm>(k: K, v: EqForm[K]) => setF((s) => ({ ...s, [k]: v }));
   const kc = ({ antena: "modAntena", contador: "modContador", otro: "modOtro" } as const)[f.kind];
   const kindLabel = ({ antena: "Antena", contador: "Contador de personas", otro: "Alarma u otro" } as const)[f.kind];
 
   const save = () => {
-    const now = "2026-10-05";
+    const now = TODAY_ISO;
     if (f.kind === "contador" && !f.dhcp && !ipSchema.safeParse(f.ip ?? "").success) return toast("IP no válida. Usa el formato 192.168.x.x o activa DHCP");
     if (!(+f.cant >= 1)) return toast("La cantidad debe ser al menos 1");
     mut((d) => {
       const a = d.inst[sucId].find((x) => x.id === accId)!;
       const { acc: _a, isNew, ...e } = f; void _a;
-      if (isNew) { e.id = sucId + "e" + Date.now(); e.hist = [{ f: now, u: "Paula Contreras", a: "Instalado", d: `Equipo registrado en ${a.n}.` }]; a.eq.push(e); }
+      if (isNew) { e.id = sucId + "e" + Date.now(); e.hist = [{ f: now, u: user, a: "Instalado", d: `Equipo registrado en ${a.n}.` }]; a.eq.push(e); }
       else {
         const o = a.eq.find((x) => x.id === f.id)!;
         const h = [];
-        if (o.ip !== e.ip || o.dhcp !== e.dhcp) h.push({ f: now, u: "Paula Contreras", a: "Cambio de IP", d: `${o.dhcp ? "DHCP" : o.ip || "—"} → ${e.dhcp ? "DHCP" : e.ip}` });
-        if ((o.mac || "") !== (e.mac || "")) h.push({ f: now, u: "Paula Contreras", a: "Cambio de MAC", d: `${o.mac || "—"} → ${e.mac || "—"}` });
-        if (!h.length) h.push({ f: now, u: "Paula Contreras", a: "Editado", d: "Datos del equipo actualizados." });
+        if (o.ip !== e.ip || o.dhcp !== e.dhcp) h.push({ f: now, u: user, a: "Cambio de IP", d: `${o.dhcp ? "DHCP" : o.ip || "—"} → ${e.dhcp ? "DHCP" : e.ip}` });
+        if ((o.mac || "") !== (e.mac || "")) h.push({ f: now, u: user, a: "Cambio de MAC", d: `${o.mac || "—"} → ${e.mac || "—"}` });
+        if (!h.length) h.push({ f: now, u: user, a: "Editado", d: "Datos del equipo actualizados." });
         Object.assign(o, e); o.hist = [...o.hist, ...h];
       }
     }, "Equipo guardado");
     onClose();
   };
   const desact = () => {
-    mut((d) => { const e = d.inst[sucId].find((a) => a.id === accId)!.eq.find((x) => x.id === f.id)!; e.inactivo = true; e.hist.push({ f: "2026-10-05", u: "Paula Contreras", a: "Desactivado", d: "Equipo desactivado desde el panel interno." }); }, "Equipo desactivado");
+    mut((d) => { const e = d.inst[sucId].find((a) => a.id === accId)!.eq.find((x) => x.id === f.id)!; e.inactivo = true; e.hist.push({ f: TODAY_ISO, u: user, a: "Desactivado", d: "Equipo desactivado desde el panel interno." }); }, "Equipo desactivado");
     onClose();
   };
 

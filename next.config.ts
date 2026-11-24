@@ -18,6 +18,10 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Como en sys_tecnicos: una instancia aparte (tests, verificación con otra
+  // DATA_SOURCE) construye en otra carpeta (NEXT_DIST_DIR) para no pisar el
+  // `.next` de quien esté corriendo `npm run dev`.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   serverExternalPackages: ["mssql", "tedious"],
   outputFileTracingIncludes: { "/api/visita/acta/[folio]": ["./public/DMC-logo.png"] },
   poweredByHeader: false,

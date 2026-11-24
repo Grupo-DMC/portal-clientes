@@ -4,7 +4,8 @@ import { Download, Plus, Search, Store } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { calOf, garOf } from "@/lib/calc";
-import { addM, days, fd, kindOf, REGIONES, stOf, TODAY } from "@/lib/format";
+import { addM, days, fd, kindOf, REGIONES, stOf, TODAY, TODAY_ISO } from "@/lib/format";
+import { PRIORIDADES, reportePendiente } from "@/lib/portal";
 import { useLookups, useStore } from "@/components/store";
 import { alertColor, Check16, DataTable, Field, Heading, Kpi, PageHead, Select, SourceBadge, useToast, type Cell, type Row } from "@/components/ui";
 import { NewClienteModal } from "./Modals";
@@ -40,7 +41,13 @@ export function Dashboard() {
         const st = stOf(c.calVence);
         if (st !== "Vigente") out.push({ p: st === "Vencida" ? "Alta" : "Media", a: "Calibración remota " + st!.toLowerCase(), c, sub: n + (n === 1 ? " sucursal" : " sucursales"), f: c.calVence, href: `/panel/clientes/${c.id}` });
       }
-      ss.filter((s) => s.cred === "Sin clave").forEach((s) => out.push({ p: "Baja", a: "Local sin clave de acceso", c, sub: s.n, f: null, href: `/panel/sucursales/${s.id}` }));
+      ss.filter((s) => s.cred === "Sin clave").forEach((s) => out.push({ p: "Baja", a: "Local sin cuenta de acceso", c, sub: s.n, f: null, href: `/panel/sucursales/${s.id}` }));
+    });
+    // Reportes de locales sin atender: con prioridad pedida por el cliente son «Alta»; el resto, «Media».
+    db.reportes.filter((r) => r.estado === "nuevo").forEach((r) => {
+      const s = sucOf(r.suc);
+      if (!cliOf(s.cli).activo) return;
+      out.push({ p: r.prioridad ? "Alta" : "Media", a: `Reporte ${r.id} · ${r.tipo}${r.prioridad ? ` (prioridad ${PRIORIDADES[r.prioridad.nivel].toLowerCase()} pedida)` : ""}`, c: cliOf(s.cli), sub: s.n, f: r.f.slice(0, 10), href: "/panel/reportes" });
     });
     tAb.filter((t) => t.prio === "Alta").forEach((t) => {
       const s = sucOf(t.suc);
@@ -56,7 +63,11 @@ export function Dashboard() {
     onClick: () => toast(`Abriendo ${t.id} en Sistema de tickets…`),
     cells: [{ t: t.id, b: true, sub: fd(t.f) }, { t: sucN(t.suc), sub: cliOf(sucOf(t.suc).cli).rs }, t.prob, tg(t.estado), tg(t.prio)],
   }));
-  const vSem = db.visitas.filter((v) => days(v.f) >= -7 && days(v.f) <= 0).length;
+  // Solo cuentan las visitas completadas (no las programadas ni las canceladas) de los últimos 7 días.
+  const vSem = db.visitas.filter((v) => v.estado === "completada" && days(v.f) >= -7 && days(v.f) <= 0).length;
+  const rPend = db.reportes.filter(reportePendiente).length;
+  const rNuevos = db.reportes.filter((r) => r.estado === "nuevo").length;
+  const ini = new Date(TODAY.getTime() - 7 * 864e5).toISOString().slice(0, 10);
   const gPV = al.filter((a) => a.a.startsWith("Garantía") || a.a.startsWith("Plan")).length;
   const cPV = al.filter((a) => a.a.startsWith("Calibración")).length;
   const nHigh = tAb.filter((t) => t.prio === "Alta").length;
@@ -76,11 +87,12 @@ export function Dashboard() {
         <Kpi l="Garantías por vencer" v={gPV} s="vencidas o en 30 días" c={alertColor} onClick={() => router.push("/panel/garantias?seg=Garantías")} />
         <Kpi l="Calibraciones por vencer" v={cPV} s="alertas de calibración" c={alertColor} onClick={() => router.push("/panel/garantias?seg=Calibraciones")} />
         <Kpi l="Tickets abiertos" v={tAb.length} s={`${nHigh} de prioridad alta`} c={alertColor} onClick={ext("Sistema de tickets")} />
-        <Kpi l="Visitas de la semana" v={vSem} s="28 sep – 4 oct" onClick={ext("Sistema de técnicos")} />
+        <Kpi l="Reportes de locales" v={rPend} s={`${rNuevos} sin revisar`} c={rNuevos ? alertColor : undefined} onClick={() => router.push("/panel/reportes")} />
+        <Kpi l="Visitas de la semana" v={vSem} s={`${fd(ini).slice(0, 5)} – ${fd(TODAY_ISO).slice(0, 5)} · completadas`} onClick={ext("Sistema de técnicos")} />
       </div>
       <div className="mt-8 grid gap-10" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(520px,100%), 1fr))" }}>
         <div className="flex flex-col gap-3">
-          <Heading title="Alertas priorizadas" hint="Garantías, calibraciones, tickets críticos y locales sin clave" />
+          <Heading title="Alertas priorizadas" hint="Garantías, calibraciones, tickets críticos, reportes de locales y locales sin cuenta" />
           <DataTable cols={[{ l: "Prioridad", w: "96px" }, { l: "Alerta" }, { l: "Cliente / alcance" }, { l: "Fecha", w: "110px" }, { l: "", w: "70px" }]} rows={alRows} emptyTitle="Sin alertas" emptyText="No hay vencimientos ni tickets críticos pendientes." />
         </div>
         <div className="flex flex-col gap-3">

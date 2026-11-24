@@ -1,129 +1,67 @@
 "use server";
 
-import { createHash, timingSafeEqual } from "node:crypto";
 import { redirect } from "next/navigation";
-import { z } from "zod";
-import { findAcct, type Surface } from "@/lib/server/accounts";
+import { findAcctByEmail, surfaceOf } from "@/lib/server/accounts";
+import { DUMMY_HASH, verifyPassword } from "@/lib/server/password";
 import { rt } from "@/lib/server/runtime";
-import { clearSession, getPending, setPending, setSession } from "@/lib/server/session";
-import { codeSchema, emailSchema, loginSchema, newPasswordSchema } from "@/lib/schemas";
+import { clearSession, setSession } from "@/lib/server/session";
+import { emailSchema, loginSchema } from "@/lib/schemas";
 
-/* Ingreso al panel interno y al portal cliente. Toda decisión se toma aquí:
-   el navegador nunca recibe contraseñas ni decide si una cuenta está activa. */
-export type LoginResult =
-  | { step: "error"; error: string }
-  | { step: "locked"; why: "tries" | "admin" }
-  | { step: "inactive" }
-  | { step: "first"; reset?: boolean }
-  | { step: "mfa" }
-  | { step: "done"; to: string }
-  | { step: "login"; notice: string };
+/* Login único. El servidor decide, por correo + directorio de cuentas, si la
+   cuenta entra al panel interno (equipo DMC) o al portal cliente. */
+export type LoginResult = { step: "error"; error: string } | { step: "done"; to: string };
 
-const DEMO_CODE = "123456";
-const MAX_TRIES = 3;
-const HOME: Record<Surface, string> = { panel: "/panel", portal: "/portal" };
+const MAX_FAILS = 5;
+const LOCK_MS = 15 * 60 * 1000;
+const BAD = "Correo o contraseña incorrectos.";
+const TOO_MANY = "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.";
 
-const same = (a: string, b: string) => {
-  const ha = createHash("sha256").update(a).digest();
-  const hb = createHash("sha256").update(b).digest();
-  return timingSafeEqual(ha, hb);
-};
-const keyOf = (s: Surface, email: string) => `${s}:${email.trim().toLowerCase()}`;
-const surfaceSchema = z.enum(["panel", "portal"]);
+/* Clave del límite: solo el correo normalizado. No se usa la IP porque
+   x-forwarded-for es falsificable sin un proxy de confianza delante. */
+const keyOf = (email: string) => `login:${email.trim().toLowerCase()}`;
 
 export async function iniciarSesion(input: unknown): Promise<LoginResult> {
   const p = loginSchema.safeParse(input);
   if (!p.success) return { step: "error", error: p.error.issues[0]?.message ?? "Datos no válidos." };
-  const { surface, email, password, remember } = p.data;
-  const key = keyOf(surface, email);
-  const acct = findAcct(surface, email);
+  const { email, password, remember } = p.data;
+  const key = keyOf(email);
+  const now = Date.now();
 
-  if (rt.locked.has(key) || acct?.status === "bloqueado") return { step: "locked", why: rt.locked.has(key) ? "tries" : "admin" };
+  const f = rt.fails.get(key);
+  if (f && f.until > now) return { step: "error", error: TOO_MANY };
+  if (f && f.until && f.until <= now) rt.fails.delete(key);
 
-  const good = !!acct && same(rt.pw.get(key) ?? acct.pass, password);
+  const acct = findAcctByEmail(email);
+  const usable = acct?.status === "ok" ? acct : undefined;
+  // Siempre se verifica (con hash de relleno si no hay cuenta usable) para tiempo constante.
+  const good = (await verifyPassword(password, usable?.passHash ?? DUMMY_HASH)) && !!usable;
+
   if (!good) {
-    const t = (rt.tries.get(key) ?? 0) + 1;
-    if (t >= MAX_TRIES) {
-      rt.locked.add(key);
-      rt.tries.delete(key);
-      return { step: "locked", why: "tries" };
+    const count = (rt.fails.get(key)?.count ?? 0) + 1;
+    if (count >= MAX_FAILS) {
+      rt.fails.set(key, { count: 0, until: now + LOCK_MS });
+      return { step: "error", error: TOO_MANY };
     }
-    rt.tries.set(key, t);
-    const left = MAX_TRIES - t;
-    return { step: "error", error: `Correo o contraseña incorrectos. Te quedan ${left} ${left === 1 ? "intento" : "intentos"}.` };
+    rt.fails.set(key, { count, until: 0 });
+    return { step: "error", error: BAD };
   }
-  rt.tries.delete(key);
 
-  if (acct.status === "inactivo") return { step: "inactive" };
-  if (acct.status === "primer" && !rt.pw.has(key)) {
-    await setPending({ id: acct.email, surface, need: "first", remember });
-    return { step: "first" };
-  }
-  if (acct.mfa) {
-    await setPending({ id: acct.email, surface, need: "mfa", remember });
-    return { step: "mfa" };
-  }
-  await setSession({ k: surface, id: acct.email }, remember);
-  return { step: "done", to: HOME[surface] };
-}
-
-export async function verificarMfa(code: unknown): Promise<LoginResult> {
-  const c = codeSchema.safeParse(code);
-  if (!c.success) return { step: "error", error: c.error.issues[0]?.message ?? "Código no válido." };
-  const pend = await getPending();
-  if (!pend || pend.need !== "mfa" || !pend.surface) return { step: "login", notice: "Tu verificación venció. Ingresa de nuevo." };
-  if (!same(c.data, DEMO_CODE)) return { step: "error", error: "El código es incorrecto o venció. Revisa el último mensaje recibido." };
-  await setSession({ k: pend.surface, id: pend.id }, pend.remember);
-  return { step: "done", to: HOME[pend.surface] };
-}
-
-export async function definirPassword(input: unknown): Promise<LoginResult> {
-  const p = newPasswordSchema.safeParse(input);
-  if (!p.success) return { step: "error", error: p.error.issues[0]?.message ?? "Contraseña no válida." };
-  const pend = await getPending();
-  if (!pend || !pend.surface || (pend.need !== "first" && pend.need !== "reset")) {
-    return { step: "login", notice: "El enlace venció. Pide uno nuevo desde «¿Olvidaste tu contraseña?»." };
-  }
-  const key = keyOf(pend.surface, pend.id);
-  if (findAcct(pend.surface, pend.id)) {
-    rt.pw.set(key, p.data.np);
-    rt.locked.delete(key);
-    rt.tries.delete(key);
-  }
-  if (pend.need === "reset") {
-    await clearSession();
-    return { step: "login", notice: "Contraseña actualizada. Ingresa con tu nueva contraseña." };
-  }
-  const acct = findAcct(pend.surface, pend.id);
-  if (acct?.mfa) {
-    await setPending({ id: pend.id, surface: pend.surface, need: "mfa", remember: pend.remember });
-    return { step: "mfa" };
-  }
-  await setSession({ k: pend.surface, id: pend.id }, pend.remember);
-  return { step: "done", to: HOME[pend.surface] };
+  rt.fails.delete(key);
+  const surface = surfaceOf(usable);
+  await setSession({ k: surface, id: usable.email }, remember);
+  return { step: "done", to: surface === "panel" ? "/panel" : "/portal" };
 }
 
 /** Siempre responde igual, exista o no la cuenta (no se puede enumerar usuarios). */
 export async function solicitarRecuperacion(input: unknown): Promise<{ ok: boolean; error?: string }> {
-  const e = emailSchema.safeParse((input as { email?: string })?.email);
+  const e = emailSchema.safeParse((input as { email?: unknown } | null)?.email);
   if (!e.success) return { ok: false, error: e.error.issues[0]?.message ?? "Correo no válido." };
+  // PENDIENTE: integrar el mailer (enlace de recuperación de un solo uso con
+  // vencimiento). Hasta entonces no se envía nada. No registrar el correo ni tokens.
   return { ok: true };
 }
 
-/** Solo demostración: simula abrir el enlace que llegaría por correo. */
-export async function abrirEnlaceDemo(input: unknown): Promise<LoginResult> {
-  const o = z.object({ surface: surfaceSchema, email: emailSchema }).safeParse(input);
-  if (!o.success) return { step: "error", error: "Correo no válido." };
-  await setPending({ id: o.data.email, surface: o.data.surface, need: "reset" });
-  return { step: "first", reset: true };
-}
-
-export async function solicitarDesbloqueo(): Promise<{ ok: true }> {
-  return { ok: true };
-}
-
-export async function cerrarSesion(surface: Surface): Promise<void> {
-  const s = surfaceSchema.parse(surface);
+export async function cerrarSesion(): Promise<void> {
   await clearSession();
-  redirect(`/${s}/login?salio=1`);
+  redirect("/login?salio=1");
 }

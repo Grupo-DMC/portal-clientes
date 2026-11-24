@@ -1,26 +1,24 @@
 "use client";
 
-import { History, Info, Plus, Power, RadioTower, Siren, Users, MapPin, ShieldCheck } from "lucide-react";
+import { History, Plus, Power, RadioTower, Siren, Users, MapPin, ShieldCheck } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { QrCode, downloadQr } from "@/components/QrCode";
 import { calOf, garOf, zonaOf } from "@/lib/calc";
 import type { Db, Equipo, Sucursal } from "@/lib/data";
 import { COMUNAS, days, fd, fl, kindOf, REGIONES, stOf, TODAY, addM } from "@/lib/format";
+import { ESTADOS_CUENTA, ESTADOS_USUARIO, ESTADOS_VISITA, ROLES, accesoDe, alcanceLabel, estadoCuenta, reportePendiente } from "@/lib/portal";
 import { useLookups, useStore } from "@/components/store";
 import { Banner, Confirm, DataTable, Drawer, Field, Heading, ProgressBar, Seg, Select, SourceBadge, Tabs, Tag, Timeline, useToast } from "@/components/ui";
 import { EquipoModal, PersonaModal } from "./Modals";
 import { TK_COLS, tg } from "./Lists";
+import { CuentaLocal } from "./Cuentas";
+import { ReportesTabla, ordenCola } from "./Reportes";
 
 const TABS = [
   { id: "datos", l: "Datos" }, { id: "personal", l: "Personal del local" }, { id: "instalacion", l: "Instalación" }, { id: "garantia", l: "Garantía" },
-  { id: "calibracion", l: "Calibración remota" }, { id: "actividad", l: "Actividad", ro: true }, { id: "acceso", l: "Acceso del local" },
+  { id: "calibracion", l: "Calibración remota" }, { id: "actividad", l: "Actividad", ro: true }, { id: "reportes", l: "Reportes del local" }, { id: "acceso", l: "Acceso del local" },
 ];
-const CRED_TXT = {
-  Activo: "El local tiene una clave vigente asignada por el cliente.",
-  "Sin clave": "El cliente aún no asigna clave a este local. El personal no puede ingresar al portal del local.",
-  Bloqueado: "El cliente bloqueó el acceso. El personal del local no puede ingresar.",
-} as const;
 const hdr = "py-[6px] text-[11px] uppercase tracking-[.06em] text-neutral-700";
 
 function EqHead({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -58,6 +56,11 @@ export default function SucursalDetail({ id }: { id: string }) {
   const pct = Math.max(0, Math.min(100, Math.round(((TODAY.getTime() - ini.getTime()) / (fin.getTime() - ini.getTime())) * 100)));
   const isS = (x: { suc: string }) => x.suc === suc.id;
   const url = "local.dmc.cl/s/" + suc.cod;
+  const reps = db.reportes.filter(isS).sort(ordenCola);
+  const repPend = reps.filter(reportePendiente).length;
+  const tabs = TABS.map((t) => (t.id === "reportes" && repPend ? { ...t, l: `Reportes del local (${repPend})` } : t));
+  const ces = estadoCuenta(db, suc);
+  const conAcceso = accesoDe(db, suc);
 
   const personas = db.personal[suc.id] ?? [];
   const perRows = personas.map((p, i) => ({
@@ -85,14 +88,15 @@ export default function SucursalDetail({ id }: { id: string }) {
             <span className="inline-flex items-center gap-[6px] text-sm"><MapPin size={15} aria-hidden />{ubLine}</span>
             <Tag t={suc.activo ? "Activa" : "Inactiva"} />
             <Tag t={`Garantía ${g.st!.toLowerCase()}`} k={kindOf(g.st!)} />
-            <Tag t={`Acceso local: ${suc.cred}`} k={kindOf(suc.cred)} />
+            <Tag t={`Zona: ${zonaOf(db, suc)}`} k="outline" />
+            <Tag t={`Cuenta del local: ${ESTADOS_CUENTA[ces].label.toLowerCase()}`} k={ESTADOS_CUENTA[ces].kind} />
           </div>
         </div>
         <button className="btn btn-secondary" onClick={() => suc.activo
           ? setConfirm({ title: `Desactivar ${suc.n}`, body: "La sucursal dejará de mostrarse en listados y su portal de local quedará bloqueado. Equipos e historial se conservan.", ok: () => upS("activo", false) })
           : upS("activo", true)}><Power size={15} aria-hidden />{suc.activo ? "Desactivar sucursal" : "Reactivar sucursal"}</button>
       </div>
-      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
       {tab === "datos" && (
         <div className="grid gap-x-10 gap-y-6" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(240px,100%), 1fr))" }}>
@@ -221,8 +225,8 @@ export default function SucursalDetail({ id }: { id: string }) {
         <div className="flex flex-col gap-9">
           <div className="flex flex-col gap-3">
             <Heading title="Visitas" actions={<SourceBadge name="Sistema de técnicos" onOpen={ext("Sistema de técnicos")} />} />
-            <DataTable cols={[{ l: "Fecha", w: "110px" }, { l: "N°", w: "100px" }, { l: "Tipo", w: "170px" }, { l: "Técnico", w: "160px" }, { l: "Trabajo realizado" }]}
-              rows={db.visitas.filter(isS).map((v) => ({ cells: [{ t: fd(v.f), b: true }, v.id, tg(v.tipo, "neutral"), v.tec, v.res] }))} emptyTitle="Sin visitas" emptyText="Esta sucursal aún no registra visitas en el Sistema de técnicos." />
+            <DataTable cols={[{ l: "Fecha", w: "110px" }, { l: "N°", w: "120px" }, { l: "Tipo", w: "170px" }, { l: "Estado", w: "130px" }, { l: "Técnico", w: "150px" }, { l: "Trabajo realizado" }]}
+              rows={db.visitas.filter(isS).sort((a, b) => b.f.localeCompare(a.f)).map((v) => ({ cells: [{ t: fd(v.f), b: true }, v.id, tg(v.tipo, "neutral"), { tag: ESTADOS_VISITA[v.estado].label, k: ESTADOS_VISITA[v.estado].kind }, v.tec, v.res] }))} emptyTitle="Sin visitas" emptyText="Esta sucursal aún no registra visitas en el Sistema de técnicos." />
           </div>
           <div className="flex flex-col gap-3">
             <Heading title="Tickets" actions={<SourceBadge name="Sistema de tickets" onOpen={ext("Sistema de tickets")} />} />
@@ -245,16 +249,23 @@ export default function SucursalDetail({ id }: { id: string }) {
         </div>
       )}
 
+      {tab === "reportes" && (
+        <>
+          <Heading title="Reportes del local" hint="Lo que el personal de esta sucursal reportó desde su acceso. El cliente también los ve en su portal." />
+          <ReportesTabla reportes={reps} ambito="sucursal" emptyTitle="Sin reportes" emptyText="El personal de este local aún no envía reportes." />
+        </>
+      )}
+
       {tab === "acceso" && (
         <div className="grid items-start gap-x-10 gap-y-8" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(300px,100%), 1fr))" }}>
-          <div className="flex flex-col gap-5">
-            <div><h3 className="!mb-[6px]">Acceso del local</h3><p className="!m-0 max-w-[560px] text-sm">La clave del portal del local la asigna y administra el cliente desde su portal (Credenciales de locales). Desde DMC solo se visualiza el estado.</p></div>
-            <div className="grid grid-cols-3 border-b border-t-2 border-b-[var(--color-divider)] border-t-text">
-              <div className="border-r border-neutral-300 py-[14px] pr-3"><div className="mb-[6px] text-xs text-neutral-700">Estado de la credencial</div><Tag t={suc.cred} size={12} /></div>
-              <div className="border-r border-neutral-300 px-3 py-[14px]"><div className="mb-[6px] text-xs text-neutral-700">Último ingreso</div><div className="font-bold">{suc.ultimoAcceso ? fd(suc.ultimoAcceso) : "Sin ingresos registrados"}</div></div>
-              <div className="px-3 py-[14px]"><div className="mb-[6px] text-xs text-neutral-700">Código de sucursal</div><div className="font-bold">{suc.cod}</div></div>
+          <div className="flex flex-col gap-8">
+            <CuentaLocal suc={suc} />
+            <div className="flex flex-col gap-3">
+              <Heading title="Personas con acceso en el portal cliente" hint="Quién puede ver este local en el portal, según su rol y alcance." />
+              <DataTable cols={[{ l: "Usuario" }, { l: "Rol", w: "minmax(0,.8fr)" }, { l: "Vía", w: "minmax(0,.8fr)" }, { l: "Estado", w: "100px" }]}
+                rows={conAcceso.map(({ u, via }) => ({ key: u.id, dim: u.estado === "suspendido", cells: [{ t: u.n, b: true, sub: u.m }, { t: ROLES[u.rolKey].label, sub: alcanceLabel(db, u) }, via, { tag: ESTADOS_USUARIO[u.estado].label, k: ESTADOS_USUARIO[u.estado].kind }] }))}
+                emptyTitle="Nadie tiene acceso" emptyText="Ningún usuario del portal de este cliente ve esta sucursal." />
             </div>
-            <div className="flex items-start gap-[10px] text-sm"><Info size={16} className="mt-[3px]" aria-hidden />{CRED_TXT[suc.cred]}</div>
           </div>
           <div className="flex flex-col gap-[14px] border-t-2 border-text bg-surface p-5">
             <div className="text-[11px] font-bold uppercase tracking-[.1em]">QR de la sucursal</div>

@@ -1,14 +1,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { NORTE, seed } from "@/lib/data";
-import { fl } from "@/lib/format";
-import { findAcct } from "@/lib/server/accounts";
+import { seed } from "@/lib/data";
+import { fl, maskRut } from "@/lib/format";
+import { puede, resolverUsuarioPortal, sucursalesVisibles } from "@/lib/portal";
+import { activeAcct } from "@/lib/server/accounts";
 import { getSession } from "@/lib/server/session";
 
 export const runtime = "nodejs";
 
-const FOLIO = /^V-\d{4,6}$/;
+/** Folios: «V-20961» (histórico) y «V-2026-01064». */
+const FOLIO = /^V-(\d{4,6}|\d{4}-\d{5})$/;
 const PURPLE = rgb(0x76 / 255, 0x22 / 255, 0x82 / 255);
 const INK = rgb(0x1f / 255, 0x1c / 255, 0x21 / 255);
 const MUTED = rgb(0x5f / 255, 0x5b / 255, 0x63 / 255);
@@ -26,13 +28,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ folio: 
   if (!v) return new Response("No encontrada", { status: 404 });
   const suc = db.sucursales.find((s) => s.id === v.suc)!;
 
-  // Control de acceso por superficie y alcance
+  // Control de acceso por superficie y alcance (en el portal, el mismo que la interfaz: sucursales visibles y permiso «visitas»)
   if (ses.k === "local" && ses.id !== suc.id) return new Response("Prohibido", { status: 403 });
   if (ses.k === "portal") {
-    const a = findAcct("portal", ses.id);
-    const ok = suc.cli === "c1" && (a?.perfil === "admin" || (a?.perfil === "zona" && NORTE.includes(suc.reg)) || (a?.perfil === "marca" && suc.marca === "Andes Home"));
+    const a = activeAcct("portal", ses.id);
+    const u = a ? resolverUsuarioPortal(db, { email: a.email, name: a.name, perfil: a.perfil }) : null;
+    const ok = !!a && !!u && suc.cli === a.clienteId && puede(u, "visitas") && sucursalesVisibles(db, u).some((s) => s.id === suc.id);
     if (!ok) return new Response("Prohibido", { status: 403 });
   }
+  // El acta solo existe cuando la visita se completó.
+  if (v.estado !== "completada") return new Response("El acta solo está disponible para visitas completadas", { status: 409 });
   const cli = db.clients.find((c) => c.id === suc.cli)!;
   const mall = db.malls.find((m) => m.id === suc.mall);
   const ubic = mall ? `${mall.n}, ${suc.local} - ${mall.dir}, ${mall.com}` : `${suc.calle}, ${suc.com}`;
@@ -74,8 +79,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ folio: 
   for (const ln of wrap(page, v.res, reg, 10.5, M, y, 495)) { page.drawText(ln, { x: M, y, size: 10.5, font: reg, color: INK }); y -= 14; }
   y -= 14;
 
-  section(page, "Informe del técnico", y, bold); y -= 18;
-  const chk = ["Prueba de detección con etiquetas AM", "Ajuste de sensibilidad", "Revisión de cableado y fuente", "Prueba de desactivador", "Contador reportando a plataforma"];
+  const det = v.detalle;
+  if (det) {
+    section(page, "Trabajos registrados", y, bold); y -= 18;
+    page.drawText(`Horario: ${det.inicio} a ${det.fin}`, { x: M, y, size: 10, font: reg, color: MUTED }); y -= 18;
+    for (const t of det.trabajos) {
+      page.drawText(t.titulo, { x: M, y, size: 10.5, font: bold, color: INK }); y -= 15;
+      for (const it of t.items) {
+        const q = `x ${it.c}`;
+        page.drawText(it.n, { x: M + 10, y, size: 10, font: reg, color: INK });
+        page.drawText(q, { x: 595 - M - reg.widthOfTextAtSize(q, 10), y, size: 10, font: reg, color: INK });
+        y -= 14;
+      }
+      y -= 6;
+    }
+    page.drawText(det.problemas.length ? `Problemas levantados: ${det.problemas.length}` : "Sin problemas registrados.", { x: M, y, size: 10.5, font: reg, color: INK });
+    y -= 20;
+  } else { section(page, "Informe del técnico", y, bold); y -= 18; }
+  const chk = det ? [] : ["Prueba de detección con etiquetas AM", "Ajuste de sensibilidad", "Revisión de cableado y fuente", "Prueba de desactivador", "Contador reportando a plataforma"];
   chk.forEach((t, i) => {
     const res = i === 4 && v.tipo === "Correctiva" ? "Observación" : "OK";
     page.drawText(t, { x: M, y, size: 10.5, font: reg, color: INK });
@@ -88,7 +109,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ folio: 
   page.drawLine({ start: { x: M, y }, end: { x: M + 200, y }, thickness: 0.8, color: INK });
   page.drawLine({ start: { x: 595 - M - 200, y }, end: { x: 595 - M, y }, thickness: 0.8, color: INK });
   page.drawText(`Técnico: ${v.tec}`, { x: M, y: y - 14, size: 9, font: reg, color: MUTED });
-  const rec = (db.personal[suc.id] ?? [{ n: "Personal del local" }])[0].n;
+  const rec = det?.firma ? `${det.firma.nombre} (RUT ${maskRut(det.firma.rut)})` : (db.personal[suc.id] ?? [{ n: "Personal del local" }])[0].n;
   page.drawText(`Recibe: ${rec}`, { x: 595 - M - 200, y: y - 14, size: 9, font: reg, color: MUTED });
 
   page.drawText("Grupo DMC · Ideas tecnológicas de seguridad · Documento generado por DMC Clientes", { x: M, y: 30, size: 8, font: reg, color: MUTED });

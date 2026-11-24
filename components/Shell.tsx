@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Bell, Building2, CalendarDays, ClipboardCheck, FileText, History, KeyRound, LayoutDashboard, LayoutGrid, List, LogOut, MapPin, ShieldCheck, Store, Ticket, Users, Lock,
+  Bell, Building2, CalendarDays, ClipboardCheck, Flag, FileText, History, KeyRound, LayoutDashboard, List, LogOut, MapPin, ShieldCheck, Store, Ticket, Users, Lock, UserRound,
   type LucideIcon,
 } from "lucide-react";
 import Image from "next/image";
@@ -12,14 +12,14 @@ import { cerrarSesion } from "@/app/actions/auth";
 
 const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard, clientes: Building2, sucursales: Store, malls: MapPin, catalogos: List, garantias: ShieldCheck, notificaciones: Bell,
-  usuarios: Users, auditoria: History, visitas: ClipboardCheck, tickets: Ticket, cotizaciones: FileText, trabajos: CalendarDays, credenciales: KeyRound,
+  usuarios: Users, auditoria: History, visitas: ClipboardCheck, tickets: Ticket, cotizaciones: FileText, trabajos: CalendarDays, credenciales: KeyRound, perfil: UserRound, reportes: Flag,
 };
 
 export type NavItem = { id: string; href: string; label: string; badge?: number };
 export type NavGroup = { title: string; items: NavItem[] };
 
 export default function Shell({
-  surface, groups, user, brandLine, header, scopeBanner, topRight, children,
+  surface, groups, user, brandLine, header, scopeBanner, topRight, topActions, profileHref, children,
 }: {
   surface: "panel" | "portal";
   groups: NavGroup[];
@@ -28,6 +28,10 @@ export default function Shell({
   header?: ReactNode;
   scopeBanner?: ReactNode;
   topRight?: string;
+  /** Slot aditivo de la barra superior (p. ej. campanita de avisos). */
+  topActions?: ReactNode;
+  /** Si se indica, el bloque del usuario en el menú lateral enlaza a esta ruta (p. ej. el perfil). */
+  profileHref?: string;
   children: ReactNode;
 }) {
   const path = usePathname();
@@ -36,7 +40,7 @@ export default function Shell({
   const root = `/${surface}`;
   // Un módulo fuera de los permitidos del rol no se muestra aunque se escriba la URL.
   const modulePath = path.replace(root, "").split("/")[1] ?? "";
-  const known = ["clientes", "sucursales", "malls", "catalogos", "garantias", "notificaciones", "usuarios", "auditoria", "visitas", "tickets", "cotizaciones", "trabajos", "credenciales"];
+  const known = ["clientes", "sucursales", "malls", "catalogos", "garantias", "notificaciones", "usuarios", "auditoria", "visitas", "tickets", "cotizaciones", "trabajos", "credenciales", "reportes"];
   const blocked = known.includes(modulePath) && !all.some((i) => i.id === modulePath);
 
   return (
@@ -72,17 +76,24 @@ export default function Shell({
             ))}
           </nav>
           <div className="border-t-2 border-text">
-            <div className="flex items-center gap-3 border-b border-neutral-300 px-5 py-[14px]">
-              <div className="grid h-9 w-9 flex-none place-items-center bg-text text-[13px] font-extrabold text-bg">{user.ini}</div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-bold">{user.n}</div>
-                <div className="truncate text-xs text-neutral-700">{user.rol}</div>
-              </div>
-            </div>
-            <Link href="/" className="flex items-center gap-3 px-5 py-[10px] text-[13px] font-semibold text-text no-underline hover:bg-neutral-200">
-              <LayoutGrid size={16} className="text-neutral-700" aria-hidden /> Cambiar de superficie
-            </Link>
-            <form action={cerrarSesion.bind(null, surface)}>
+            {(() => {
+              const who = (
+                <>
+                  <div className="grid h-9 w-9 flex-none place-items-center bg-text text-[13px] font-extrabold text-bg">{user.ini}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-bold">{user.n}</div>
+                    <div className="truncate text-xs text-neutral-700">{user.rol}</div>
+                  </div>
+                </>
+              );
+              const cls = "flex items-center gap-3 border-b border-neutral-300 px-5 py-[14px]";
+              return profileHref ? (
+                <Link href={profileHref} className={`${cls} text-text no-underline hover:bg-neutral-200`} aria-current={path === profileHref ? "page" : undefined}>
+                  {who}<span className="sr-only">, abrir Mi perfil</span>
+                </Link>
+              ) : <div className={cls}>{who}</div>;
+            })()}
+            <form action={cerrarSesion}>
               <button type="submit" className="flex w-full cursor-pointer items-center gap-3 border-0 bg-transparent px-5 pb-3 pt-[10px] text-left text-[13px] font-semibold text-text hover:bg-neutral-200">
                 <LogOut size={16} className="text-neutral-700" aria-hidden /> Cerrar sesión
               </button>
@@ -94,6 +105,7 @@ export default function Shell({
             <span className="text-[13px] font-bold">{current?.label ?? "Panel"}</span>
             <div className="flex-1" />
             <span className="text-xs text-neutral-700">{topRight ?? "Lunes 5 de octubre, 2026"}</span>
+            {topActions}
           </div>
           {scopeBanner}
           <div className="max-w-[1400px] px-10 pb-16 pt-8">

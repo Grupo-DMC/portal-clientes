@@ -4,16 +4,12 @@ import { cookies } from "next/headers";
 
 /* Sesión en cookie httpOnly firmada con HMAC-SHA256. No guarda datos
    sensibles: solo superficie e identidad; el resto se resuelve en servidor. */
-export type Kind = "panel" | "portal" | "local" | "pending";
+export type Kind = "panel" | "portal" | "local";
 export type Payload = {
   k: Kind;
   /** email (panel/portal) o id de sucursal (local) */
   id: string;
   exp: number;
-  /** pendiente: qué falta para completar el ingreso */
-  need?: "mfa" | "first" | "reset";
-  surface?: "panel" | "portal";
-  remember?: boolean;
 };
 
 const DEV_SECRET = "dev-only-secret-change-me-dev-only-secret";
@@ -46,29 +42,22 @@ export function decode(token: string | undefined): Payload | null {
 }
 
 export const SESSION_COOKIE = "dmc_session";
-const PENDING = "dmc_pending";
+const LEGACY_PENDING = "dmc_pending";
 const base = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/" };
 
 export async function setSession(p: Omit<Payload, "exp">, remember = false) {
   const ttl = remember ? 1000 * 60 * 60 * 24 * 14 : 1000 * 60 * 60 * 8;
   const jar = await cookies();
   jar.set(SESSION_COOKIE, encode({ ...p, exp: Date.now() + ttl }), { ...base, ...(remember ? { maxAge: ttl / 1000 } : {}) });
-  jar.delete(PENDING);
-}
-export async function setPending(p: Omit<Payload, "exp" | "k">) {
-  const jar = await cookies();
-  jar.set(PENDING, encode({ ...p, k: "pending", exp: Date.now() + 1000 * 60 * 10 }), { ...base, maxAge: 600 });
+  // Restos del flujo anterior de varios pasos.
+  jar.delete(LEGACY_PENDING);
 }
 export async function getSession(): Promise<Payload | null> {
   const p = decode((await cookies()).get(SESSION_COOKIE)?.value);
-  return p && p.k !== "pending" ? p : null;
-}
-export async function getPending(): Promise<Payload | null> {
-  const p = decode((await cookies()).get(PENDING)?.value);
-  return p && p.k === "pending" ? p : null;
+  return p && (p.k === "panel" || p.k === "portal" || p.k === "local") ? p : null;
 }
 export async function clearSession() {
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
-  jar.delete(PENDING);
+  jar.delete(LEGACY_PENDING);
 }
