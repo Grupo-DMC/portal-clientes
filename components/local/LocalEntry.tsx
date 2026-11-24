@@ -11,7 +11,7 @@ export type Scan =
   | { kind: "invalido" }
   | { kind: "ok" | "sinclave" | "bloqueado"; cod: string; n: string; marca: string; dir: string };
 
-const CASOS: [string, string][] = [["AM-012", "QR válido"], ["AM-031", "Local sin clave"], ["AK-003", "Local bloqueado"], ["XX-000", "QR inválido"]];
+const CASOS: [string, string][] = [["PU-001", "QR válido"], ["PU-003", "Local sin clave"], ["PU-007", "Local bloqueado"], ["XX-000", "QR inválido"]];
 const big = "!min-h-[52px] !text-[17px]";
 
 function Top({ link }: { link?: boolean }) {
@@ -119,11 +119,11 @@ export default function LocalEntry({ scan, codigoMode, notice }: { scan: Scan; c
             <Top />
             <form className="flex flex-col gap-[18px] px-5 py-7" onSubmit={(e) => { e.preventDefault(); if (!cod.trim()) return setErr("Ingresa el código de tu sucursal."); enter(cod.trim().toUpperCase()); }} noValidate>
               <h1 className="!m-0 !text-[30px]">Ingresa a tu local</h1>
-              <div className="field"><label htmlFor="cc" className="!text-[13px]">Código de sucursal</label><input id="cc" className={`input ${big} uppercase`} value={cod} placeholder="Ej. AM-012" maxLength={12} autoCapitalize="characters" onChange={(e) => { setCod(e.target.value); setErr(""); }} /></div>
+              <div className="field"><label htmlFor="cc" className="!text-[13px]">Código de sucursal</label><input id="cc" className={`input ${big} uppercase`} value={cod} placeholder="Ej. PU-001" maxLength={12} autoCapitalize="characters" onChange={(e) => { setCod(e.target.value); setErr(""); }} /></div>
               <div className="field"><label htmlFor="cl" className="!text-[13px]">Clave del local</label><input id="cl" className={`input ${big}`} type="password" autoComplete="current-password" value={clave} aria-invalid={!!err} style={{ borderColor: err ? "var(--color-danger)" : undefined }} onChange={(e) => { setClave(e.target.value); setErr(""); }} /></div>
               {err && <div role="alert" className="flex gap-2 px-3 py-[10px] text-sm" style={{ background: "var(--color-danger-100)", color: "var(--color-danger-800)" }}><CircleAlert size={16} className="mt-[2px]" aria-hidden />{err}</div>}
               <button type="submit" disabled={pending} className="btn btn-primary btn-spread !min-h-[52px] !text-base">{pending ? "Validando…" : "Ingresar"}<ArrowRight size={18} aria-hidden /></button>
-              <div className="flex flex-col gap-[2px] text-xs text-neutral-700"><span>Demostración: <strong>AM-012</strong> · clave <strong>Andes-4821</strong></span><span><strong>AM-031</strong> sin clave · <strong>AK-003</strong> bloqueado · otro código: no existe</span></div>
+              <div className="flex flex-col gap-[2px] text-xs text-neutral-700"><span>Demostración: <strong>PU-001</strong> (o cualquier local activo, p. ej. PU-004 o PU-005) · clave <strong>Andes-4821</strong></span><span><strong>PU-003</strong> sin clave · <strong>PU-007</strong> bloqueado · otro código: no existe</span></div>
               <button type="button" className="btn btn-ghost self-start !min-h-11" onClick={() => { setMode("qr"); setErr(""); }}><ArrowLeft size={15} aria-hidden />Volver</button>
             </form>
           </>

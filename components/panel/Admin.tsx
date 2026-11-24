@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { garOf, calOf } from "@/lib/calc";
 import { ACC, MOD_IN, MOD_PO, type Catalogos } from "@/lib/data";
-import { fd, kindOf } from "@/lib/format";
+import { fd, kindOf, TODAY_ISO } from "@/lib/format";
 import { useLookups, useStore } from "@/components/store";
 import { Check16, Confirm, DataTable, Field, Heading, PageHead, Seg, Select, Tag, useToast, type Row } from "@/components/ui";
 import { tg } from "./Lists";
+import { RolesPortal, UsuariosPortal } from "./UsuariosPortal";
 
 /* ───────── Catálogos ───────── */
 const CATS: [keyof Catalogos, string, string][] = [
@@ -144,44 +145,51 @@ export function Usuarios() {
   return (
     <>
       <PageHead kicker="Acceso y roles" title="Usuarios y Permisos" actions={<Seg opts={["Panel interno DMC", "Portal cliente"] as const} value={scope} onChange={(t) => { setScope(t); setPRol(t === "Panel interno DMC" ? "r1" : "q1"); }} />} />
-      {!isIn && <div className="mb-5 flex gap-[10px] bg-surface px-[14px] py-3 text-sm"><Info size={16} className="mt-[3px] flex-none" aria-hidden /><span>Roles predefinidos por DMC para el <strong>portal cliente</strong>. El cliente asigna estos roles a sus usuarios junto con un alcance (todo, marca, zona o región).</span></div>}
-      <div className="grid gap-8" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(260px,100%), 1fr))" }}>
-        <div className="flex flex-col">
-          <div className="mb-[10px] flex items-center justify-between"><h3 className="!m-0 !text-lg">Roles</h3>
-            <button className="btn btn-ghost" onClick={() => ask(isIn ? "Nuevo rol interno" : "Nuevo rol del portal", "Nombre del rol", (n) => setRoles((r, p) => { const id = (isIn ? "r" : "q") + Date.now(); (isIn ? r.rolesIn : r.rolesPo).push({ id, n }); p[id] = Object.fromEntries(mods.map((m) => [m, Object.fromEntries(ACC.map((a) => [a, a === "Ver"]))])); setPRol(id); }))}><Plus size={15} aria-hidden />Nuevo rol</button></div>
-          <div className="border-t-2 border-text">
-            {list.map((r) => {
-              const cnt = isIn ? db.usuariosDmc.filter((u) => u.rol === r.id && u.activo).length : db.usuariosPortal.filter((u) => u.rol === r.n && u.activo).length;
-              return (
-                <button key={r.id} onClick={() => setPRol(r.id)} aria-current={r.id === rid} className="hover-surface flex w-full cursor-pointer flex-col gap-[2px] border-0 border-b border-neutral-300 px-3 py-[11px] text-left text-inherit"
-                  style={{ background: r.id === rid ? "var(--color-surface)" : "transparent" }}>
-                  <span className="flex items-center gap-2 text-sm" style={{ fontWeight: r.id === rid ? 800 : 600 }}><span aria-hidden className="h-2 w-2" style={{ background: r.id === rid ? "var(--color-accent)" : "transparent" }} />{r.n}</span><span className="text-xs text-neutral-700">{cnt} usuarios</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="!m-0 !text-[22px]">Permisos de “{rol.n}”</h3><button className="btn btn-primary" onClick={() => toast(`Permisos de “${rol.n}” guardados`)}>Guardar permisos</button></div>
-          <div className="overflow-x-auto border-t-2 border-text">
-            <div className="grid border-b-2" style={{ gridTemplateColumns: "minmax(160px,1.6fr) repeat(5, minmax(56px,1fr)) 60px", borderColor: "var(--color-divider)", minWidth: 560 }}>
-              <div className="th">Módulo</div>{ACC.map((a) => (<div key={a} className="th">{a}</div>))}<div />
+      {!isIn && <div className="mb-5 flex gap-[10px] bg-surface px-[14px] py-3 text-sm"><Info size={16} className="mt-[3px] flex-none" aria-hidden /><span>Roles predefinidos por DMC para el <strong>portal cliente</strong>: administrador, jefe de zona, jefe de locales y encargado de local. El cliente asigna cada rol con su alcance (todo el cliente, una zona, varias sucursales o una sucursal).</span></div>}
+      {isIn ? (
+        <div className="grid gap-8" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(260px,100%), 1fr))" }}>
+          <div className="flex flex-col">
+            <div className="mb-[10px] flex items-center justify-between"><h3 className="!m-0 !text-lg">Roles</h3>
+              <button className="btn btn-ghost" onClick={() => ask(isIn ? "Nuevo rol interno" : "Nuevo rol del portal", "Nombre del rol", (n) => setRoles((r, p) => { const id = (isIn ? "r" : "q") + Date.now(); (isIn ? r.rolesIn : r.rolesPo).push({ id, n }); p[id] = Object.fromEntries(mods.map((m) => [m, Object.fromEntries(ACC.map((a) => [a, a === "Ver"]))])); setPRol(id); }))}><Plus size={15} aria-hidden />Nuevo rol</button></div>
+            <div className="border-t-2 border-text">
+              {list.map((r) => {
+                const cnt = isIn ? db.usuariosDmc.filter((u) => u.rol === r.id && u.activo).length : db.usuariosPortal.filter((u) => u.rol === r.n && u.activo).length;
+                return (
+                  <button key={r.id} onClick={() => setPRol(r.id)} aria-current={r.id === rid} className="hover-surface flex w-full cursor-pointer flex-col gap-[2px] border-0 border-b border-neutral-300 px-3 py-[11px] text-left text-inherit"
+                    style={{ background: r.id === rid ? "var(--color-surface)" : "transparent" }}>
+                    <span className="flex items-center gap-2 text-sm" style={{ fontWeight: r.id === rid ? 800 : 600 }}><span aria-hidden className="h-2 w-2" style={{ background: r.id === rid ? "var(--color-accent)" : "transparent" }} />{r.n}</span><span className="text-xs text-neutral-700">{cnt} usuarios</span>
+                  </button>
+                );
+              })}
             </div>
-            {mods.map((m) => (
-              <div key={m} className="hover-row grid items-center border-b border-neutral-300" style={{ gridTemplateColumns: "minmax(160px,1.6fr) repeat(5, minmax(56px,1fr)) 60px", minWidth: 560 }}>
-                <div className="px-2 py-[10px] text-sm font-bold">{m}</div>
-                {ACC.map((a) => (<div key={a} className="px-2 py-[10px]"><input type="checkbox" className="chk !h-[18px] !w-[18px]" aria-label={`${m}: ${a}`} checked={!!pr?.[m]?.[a]} onChange={tog(m, a)} /></div>))}
-                <div className="flex justify-end"><button className="btn btn-ghost !text-xs" onClick={() => setPerms((p) => { const v = !ACC.every((a) => p[rid][m][a]); ACC.forEach((a) => { p[rid][m][a] = v; }); })}>Todo</button></div>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="!m-0 !text-[22px]">Permisos de “{rol.n}”</h3><button className="btn btn-primary" onClick={() => toast(`Permisos de “${rol.n}” guardados`)}>Guardar permisos</button></div>
+            <div className="overflow-x-auto border-t-2 border-text">
+              <div className="grid border-b-2" style={{ gridTemplateColumns: "minmax(160px,1.6fr) repeat(5, minmax(56px,1fr)) 60px", borderColor: "var(--color-divider)", minWidth: 560 }}>
+                <div className="th">Módulo</div>{ACC.map((a) => (<div key={a} className="th">{a}</div>))}<div />
               </div>
-            ))}
+              {mods.map((m) => (
+                <div key={m} className="hover-row grid items-center border-b border-neutral-300" style={{ gridTemplateColumns: "minmax(160px,1.6fr) repeat(5, minmax(56px,1fr)) 60px", minWidth: 560 }}>
+                  <div className="px-2 py-[10px] text-sm font-bold">{m}</div>
+                  {ACC.map((a) => (<div key={a} className="px-2 py-[10px]"><input type="checkbox" className="chk !h-[18px] !w-[18px]" aria-label={`${m}: ${a}`} checked={!!pr?.[m]?.[a]} onChange={tog(m, a)} /></div>))}
+                  <div className="flex justify-end"><button className="btn btn-ghost !text-xs" onClick={() => setPerms((p) => { const v = !ACC.every((a) => p[rid][m][a]); ACC.forEach((a) => { p[rid][m][a] = v; }); })}>Todo</button></div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-col gap-10">
+          <RolesPortal />
+          <UsuariosPortal titulo="Usuarios del portal (todos los clientes)" hint="Cada cliente administra sus usuarios; aquí el equipo DMC puede revisar su rol y alcance, editarlos o suspenderlos. Para invitar a alguien nuevo, abre la ficha del cliente." />
+        </div>
+      )}
       {isIn && (
         <div className="mt-10 flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="!m-0 !text-[22px]">Usuarios DMC</h3>
             <div className="flex flex-wrap items-center gap-3"><Check16 checked={inact} onChange={setInact} label="Mostrar inactivos" />
-              <button className="btn btn-primary" onClick={() => ask("Invitar usuario DMC", "Correo @grupodmc.cl", (m) => { if (!/^[^\s@]+@grupodmc\.cl$/i.test(m)) return toast("Usa un correo @grupodmc.cl"); mut((d) => { d.usuariosDmc.push({ id: "u" + Date.now(), n: m.split("@")[0], m, rol: "r3", activo: true, ult: "2026-10-05" }); }, `Invitación enviada a ${m}`); })}><UserPlus size={15} aria-hidden />Invitar usuario</button></div></div>
+              <button className="btn btn-primary" onClick={() => ask("Invitar usuario DMC", "Correo @grupodmc.cl", (m) => { if (!/^[^\s@]+@grupodmc\.cl$/i.test(m)) return toast("Usa un correo @grupodmc.cl"); mut((d) => { d.usuariosDmc.push({ id: "u" + Date.now(), n: m.split("@")[0], m, rol: "r3", activo: true, ult: TODAY_ISO }); }, `Invitación enviada a ${m}`); })}><UserPlus size={15} aria-hidden />Invitar usuario</button></div></div>
           <div className="overflow-x-auto border-t-2 border-text">
             <div className="grid border-b-2" style={{ gridTemplateColumns: "minmax(0,1.4fr) minmax(160px,1fr) 100px 90px 100px", borderColor: "var(--color-divider)", minWidth: 640 }}>
               <div className="th">Usuario</div><div className="th">Rol</div><div className="th">Último acceso</div><div className="th">Estado</div><div />

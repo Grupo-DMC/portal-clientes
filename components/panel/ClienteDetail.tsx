@@ -3,18 +3,23 @@
 import { Building2, ChevronDown, ChevronRight, Map as MapIcon, Plus, Power, ShoppingBag, MapPin, Store, BellOff, CalendarX } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { calOf, garOf } from "@/lib/calc";
+import { calOf, garOf, zonaOf } from "@/lib/calc";
 import type { Cliente, Contacto, Direccion } from "@/lib/data";
-import { addM, checkRut, fd, fmtAlc, kindOf, MES_UP, REGIONES, stOf } from "@/lib/format";
+import { addM, checkRut, days, fd, fmtAlc, kindOf, MES_UP, REGIONES, stOf } from "@/lib/format";
+import { ESTADOS_VISITA, reportePendiente } from "@/lib/portal";
 import { useLookups, useStore } from "@/components/store";
 import { Confirm, DataTable, Field, Heading, PageHead, Select, Seg, SourceBadge, Stat, Switch, Tabs, Tag, useDemoState, useToast, Check16, type Row } from "@/components/ui";
 import { ContactoModal, DireccionModal, NewSucursalModal, ZonaModal } from "./Modals";
 import { TK_COLS, tg } from "./Lists";
+import { CuentasTabla } from "./Cuentas";
+import { ReportesTabla, ordenCola } from "./Reportes";
+import { UsuariosPortal } from "./UsuariosPortal";
 
 const TABS = [
   { id: "facturacion", l: "Facturación" }, { id: "contactos", l: "Contactos" }, { id: "zonas", l: "Zonas" }, { id: "marcas", l: "Marcas y sucursales" },
   { id: "garantia", l: "Garantía y calibración" }, { id: "visitas", l: "Visitas", ro: true }, { id: "cotizaciones", l: "Cotizaciones y despachos", ro: true },
-  { id: "planificacion", l: "Planificación", ro: true }, { id: "tickets", l: "Tickets", ro: true }, { id: "notificaciones", l: "Notificaciones" }, { id: "usuarios", l: "Usuarios del portal" },
+  { id: "planificacion", l: "Planificación", ro: true }, { id: "tickets", l: "Tickets", ro: true }, { id: "cuentas", l: "Cuentas de locales" }, { id: "reportes", l: "Reportes de locales" },
+  { id: "notificaciones", l: "Notificaciones" }, { id: "usuarios", l: "Usuarios del portal" },
 ];
 const EVS: [string, string][] = [["tn", "Ticket nuevo"], ["tc", "Ticket cerrado"], ["vr", "Visita realizada"], ["gv", "Garantía por vencer"], ["cv", "Calibración por vencer"]];
 
@@ -27,8 +32,8 @@ export default function ClienteDetail({ id }: { id: string }) {
   const demo = useDemoState();
   const cli = db.clients.find((c) => c.id === id);
   const [tab, setTab] = useState(sp.get("tab") ?? "facturacion");
-  const [exp, setExp] = useState<Record<string, boolean>>({ "Andes Moda": true });
-  const [dirInact, setDirInact] = useState(false), [conInact, setConInact] = useState(false), [uInact, setUInact] = useState(false);
+  const [exp, setExp] = useState<Record<string, boolean>>({ Puma: true });
+  const [dirInact, setDirInact] = useState(false), [conInact, setConInact] = useState(false);
   const [vSuc, setVSuc] = useState("Todas"), [vTec, setVTec] = useState("Todos"), [vDesde, setVDesde] = useState("2026-01-01"), [vHasta, setVHasta] = useState("2026-12-31");
   const [modal, setModal] = useState<null | { t: "dir"; v?: Direccion } | { t: "con"; v?: Contacto } | { t: "zona"; idx: number } | { t: "suc" }>(null);
   const [confirm, setConfirm] = useState<null | { title: string; body: string; cta: string; ok: () => void }>(null);
@@ -46,10 +51,15 @@ export default function ClienteDetail({ id }: { id: string }) {
   const sinZona = REGIONES.filter((r) => !used.includes(r));
 
   const kicker = `Cliente · ${cli.tipo}`;
+  const reps = db.reportes.filter(inCs).sort(ordenCola);
+  const repPend = reps.filter(reportePendiente).length;
   const stat = [
     { v: cli.marcas.length, l: "Marcas" }, { v: cs.length, l: "Sucursales" }, { v: db.contacts.filter((k) => k.cli === cli.id && k.activo).length, l: "Contactos" },
     { v: db.tickets.filter((t) => cs.some((s) => s.id === t.suc) && t.estado !== "Cerrado").length, l: "Tickets abiertos" },
+    { v: repPend, l: "Reportes pendientes" },
+    { v: db.visitas.filter((v) => inCs(v) && v.estado === "completada" && days(v.f) >= -7 && days(v.f) <= 0).length, l: "Visitas (7 días)" },
   ];
+  const tabs = TABS.map((t) => (t.id === "reportes" && repPend ? { ...t, l: `Reportes de locales (${repPend})` } : t));
 
   const toggleActivo = () => cli.activo
     ? setConfirm({ title: `Desactivar ${cli.rs}`, body: "El cliente y sus sucursales dejarán de aparecer en los listados (puedes verlos con “Mostrar inactivos”). Los datos y el historial se conservan.", cta: "Desactivar", ok: () => mut((d) => { d.clients.find((c) => c.id === cli.id)!.activo = false; }, "Cliente desactivado") })
@@ -85,13 +95,6 @@ export default function ClienteDetail({ id }: { id: string }) {
   const nl = db.notif[cli.id] ?? [];
   const updN = (fn: (l: typeof nl) => void) => mut((d) => { d.notif[cli.id] ??= []; fn(d.notif[cli.id]); });
   const cands = [...db.contacts.filter((k) => k.cli === cli.id && k.activo).map((k) => ({ n: k.n, tipo: "Contacto", m: k.mail })), ...db.usuariosDmc.filter((u) => u.activo).map((u) => ({ n: u.n, tipo: "Usuario DMC", m: u.m }))].filter((c) => !nl.some((r) => r.m === c.m));
-  const puRows: Row[] = db.usuariosPortal.filter((u) => u.cli === cli.id && (uInact || u.activo)).map((u) => ({
-    dim: !u.activo,
-    cells: [{ t: u.n, b: true, sub: u.m }, u.rol, { chips: [{ t: fmtAlc(u.alc, u.val), k: u.alc === "Todo el cliente" ? "dark" : "neutral" }] }, fd(u.ult), tg(u.activo ? "Activo" : "Inactivo"),
-      { actions: u.activo ? [{ t: "Desactivar", on: () => setConfirm({ title: "Desactivar usuario", body: u.n + " no podrá ingresar al portal cliente.", cta: "Desactivar", ok: () => mut((d) => { d.usuariosPortal.find((x) => x.id === u.id)!.activo = false; }, "Usuario desactivado") }) }] : [{ t: "Reactivar", on: () => mut((d) => { d.usuariosPortal.find((x) => x.id === u.id)!.activo = true; }, "Usuario reactivado") }] }],
-  }));
-
-
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-5 pb-5">
@@ -110,7 +113,7 @@ export default function ClienteDetail({ id }: { id: string }) {
           <button className="btn btn-secondary" onClick={toggleActivo}><Power size={15} aria-hidden />{cli.activo ? "Desactivar cliente" : "Reactivar cliente"}</button>
         </div>
       </div>
-      <Tabs tabs={TABS} value={tab} onChange={setTab} />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
       {tab === "facturacion" && (
         <>
@@ -160,10 +163,11 @@ export default function ClienteDetail({ id }: { id: string }) {
               {cli.zonas.map((z, i) => (
                 <div key={z.n} className="flex flex-col gap-3 border-t-2 border-text bg-surface p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <div><div className="text-lg font-extrabold">{z.n}</div><div className="text-xs text-neutral-700">{z.regs.length} regiones · {cs.filter((s) => z.regs.includes(s.reg)).length} sucursales</div></div>
+                    <div><div className="text-lg font-extrabold">{z.n}</div><div className="text-xs text-neutral-700">{z.comunas?.length ? `${z.comunas.length} comunas` : `${z.regs.length} regiones`} · {cs.filter((s) => zonaOf(db, s) === z.n).length} sucursales</div></div>
                     <button className="btn btn-ghost" onClick={() => setModal({ t: "zona", idx: i })}>Editar</button>
                   </div>
-                  <div className="flex flex-wrap gap-1">{z.regs.map((r) => (<span key={r} className="border border-neutral-300 bg-bg px-2 py-[2px] text-[11px]">{r}</span>))}</div>
+                  <div className="flex flex-wrap gap-1">{(z.comunas?.length ? z.comunas : z.regs).map((r) => (<span key={r} className="border border-neutral-300 bg-bg px-2 py-[2px] text-[11px]">{r}</span>))}</div>
+                  {z.comunas?.length ? <div className="text-[11px] text-neutral-700">Región {z.regs.join(", ")}</div> : null}
                 </div>
               ))}
             </div>
@@ -281,11 +285,11 @@ export default function ClienteDetail({ id }: { id: string }) {
                   <div><div className="text-[30px] font-extrabold leading-none">{v.f.slice(8)}</div><div className="text-[11px] tracking-[.08em] text-neutral-700">{MES_UP[+v.f.slice(5, 7) - 1]} {v.f.slice(0, 4)}</div></div>
                   <div className="flex justify-center"><div className="relative w-[2px] bg-neutral-300"><div className="absolute -left-[5px] top-[6px] h-3 w-3" style={{ background: "var(--color-accent)" }} /></div></div>
                   <div className="flex flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-2"><span className="font-extrabold">{sucN(v.suc)}</span><span className="bg-neutral-200 px-2 py-[2px] text-[11px]">{v.tipo}</span></div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="font-extrabold">{sucN(v.suc)}</span><span className="bg-neutral-200 px-2 py-[2px] text-[11px]">{v.tipo}</span><Tag t={ESTADOS_VISITA[v.estado].label} k={ESTADOS_VISITA[v.estado].kind} /></div>
                     <div className="text-sm">{v.res}</div>
                     <div className="text-xs text-neutral-700">{v.id} · Técnico: {v.tec}</div>
                   </div>
-                  <a href={`/api/visita/acta/${v.id}`} target="_blank" rel="noopener" className="whitespace-nowrap text-[13px] font-semibold">Ver informe</a>
+                  {v.estado === "completada" ? <a href={`/api/visita/acta/${v.id}`} target="_blank" rel="noopener" className="whitespace-nowrap text-[13px] font-semibold">Ver informe</a> : <span />}
                 </div>
               ))}
           </div>
@@ -316,6 +320,20 @@ export default function ClienteDetail({ id }: { id: string }) {
         <>
           <Heading title="Tickets por sucursal" actions={<SourceBadge name="Sistema de tickets" onOpen={ext("Sistema de tickets")} />} />
           <DataTable cols={TK_COLS} rows={tkRows} emptyTitle="Sin tickets" />
+        </>
+      )}
+
+      {tab === "cuentas" && (
+        <>
+          <Heading title="Cuentas de acceso de los locales" hint="Cada sucursal entra a su portal del local con su propia cuenta. DMC puede crearla, suspenderla o reactivarla; la clave la administra el cliente." />
+          <CuentasTabla cliId={cli.id} />
+        </>
+      )}
+
+      {tab === "reportes" && (
+        <>
+          <Heading title="Reportes de los locales" hint="Lo que el personal en sitio reportó desde su acceso. El cliente también los ve en su portal." />
+          <ReportesTabla reportes={reps} ambito="cliente" emptyTitle="Sin reportes" emptyText="Ninguna sucursal de este cliente ha enviado reportes." />
         </>
       )}
 
@@ -351,12 +369,7 @@ export default function ClienteDetail({ id }: { id: string }) {
         </>
       )}
 
-      {tab === "usuarios" && (
-        <>
-          <Heading title="Usuarios del portal cliente" hint="El cliente crea sus usuarios desde su portal. Desde DMC se pueden revisar y desactivar." actions={<Check16 checked={uInact} onChange={setUInact} label="Mostrar inactivos" />} />
-          <DataTable cols={[{ l: "Usuario" }, { l: "Rol", w: "170px" }, { l: "Alcance", w: "minmax(0,.9fr)" }, { l: "Último acceso", w: "120px" }, { l: "Estado", w: "90px" }, { l: "", w: "110px" }]} rows={puRows} emptyTitle="Sin usuarios del portal" emptyText="El cliente aún no crea usuarios en su portal." />
-        </>
-      )}
+      {tab === "usuarios" && <UsuariosPortal cliId={cli.id} />}
 
       {modal?.t === "dir" && <DireccionModal cli={cli} init={modal.v} onClose={() => setModal(null)} />}
       {modal?.t === "con" && <ContactoModal cli={cli} init={modal.v} onClose={() => setModal(null)} />}

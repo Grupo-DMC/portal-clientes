@@ -1,0 +1,47 @@
+name: CI
+
+# Igual que sys_tecnicos, sin el paso de tests (el portal aún no tiene Vitest).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Auditoría de dependencias
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build
+        run: npm run build
+        env:
+          # Valores falsos: el build no abre ninguna conexión. Ningún secreto real.
+          DATA_SOURCE: mock
+          SESSION_SECRET: 0000000000000000000000000000000000000000000000000000000000000000
+          NEXT_TELEMETRY_DISABLED: "1"

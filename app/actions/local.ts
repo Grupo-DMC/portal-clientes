@@ -2,10 +2,12 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { redirect } from "next/navigation";
-import { seed, type Ticket } from "@/lib/data";
-import { localLoginSchema, reporteSchema } from "@/lib/schemas";
+import { seed, type Reporte } from "@/lib/data";
+import { localLoginSchema } from "@/lib/schemas";
 import { rt } from "@/lib/server/runtime";
 import { clearSession, getSession, setSession } from "@/lib/server/session";
+import { reporteLocalSchema } from "@/components/local/reporte";
+import { agregarReporte, registrarAcceso } from "@/components/local/server-data";
 
 /* Portal del local: el personal entra con QR (código de sucursal) y la clave
    que asigna el cliente. Sin cuenta personal. */
@@ -23,11 +25,14 @@ export async function ingresarLocal(input: unknown): Promise<LocalResult> {
   const p = localLoginSchema.safeParse(input);
   if (!p.success) return { ok: false, kind: "error", error: p.error.issues[0]?.message ?? "Datos no válidos." };
   const { cod, clave } = p.data;
-  const suc = seed().sucursales.find((s) => s.cod.toUpperCase() === cod);
+  const db = seed();
+  const suc = db.sucursales.find((s) => s.cod.toUpperCase() === cod);
   if (!suc) return { ok: false, kind: "error", error: "No encontramos esa sucursal. Revisa el código impreso junto al QR." };
-  if (suc.cred === "Sin clave") return { ok: false, kind: "sinclave" };
+  // La cuenta del local manda: sin cuenta = «sin clave»; cuenta suspendida = bloqueado por el cliente.
+  const cuenta = db.cuentas[suc.id];
+  if (!cuenta || suc.cred === "Sin clave") return { ok: false, kind: "sinclave" };
   const key = `local:${cod}`;
-  if (suc.cred === "Bloqueado") return { ok: false, kind: "bloqueado", why: "admin" };
+  if (cuenta.estado === "suspendida" || suc.cred === "Bloqueado" || !suc.activo) return { ok: false, kind: "bloqueado", why: "admin" };
   if (rt.locked.has(key)) return { ok: false, kind: "bloqueado", why: "tries" };
 
   if (!same(clave, DEMO_KEY)) {
@@ -42,25 +47,24 @@ export async function ingresarLocal(input: unknown): Promise<LocalResult> {
     return { ok: false, kind: "error", error: `Clave incorrecta. Te quedan ${left} ${left === 1 ? "intento" : "intentos"}.` };
   }
   rt.tries.delete(key);
-  if (suc.id !== "s1") return { ok: false, kind: "error", error: "Demostración: solo AM-012 tiene datos de ejemplo." };
+  registrarAcceso(suc.id);
   await setSession({ k: "local", id: suc.id });
   return { ok: true };
 }
 
-export type ReporteResult = { ok: true; id: string } | { ok: false; error: string };
+export type ReporteResult = { ok: true; reporte: Reporte } | { ok: false; error: string };
 
+/** El personal del local envía un reporte: queda en `db.reportes` con estado «nuevo» y avisa a los usuarios del portal con alcance sobre el local. */
 export async function crearReporte(input: unknown): Promise<ReporteResult> {
   const ses = await getSession();
   if (!ses || ses.k !== "local") return { ok: false, error: "Tu sesión venció. Escanea el QR del local para volver a entrar." };
-  const p = reporteSchema.safeParse(input);
+  const p = reporteLocalSchema.safeParse(input);
   if (!p.success) return { ok: false, error: p.error.issues[0]?.message ?? "Revisa el formulario." };
-  const id = `TK-${rt.seq++}`;
-  const t: Ticket = {
-    id, suc: ses.id, f: "2026-10-05", prob: p.data.tipo, estado: "Abierto", prio: p.data.urg,
-    desc: `${p.data.acc}: ${p.data.desc || p.data.tipo}`, nom: p.data.nom, isNew: true,
-  };
-  rt.tickets.push(t);
-  return { ok: true, id };
+  const suc = seed().sucursales.find((s) => s.id === ses.id);
+  if (!suc) return { ok: false, error: "No encontramos tu sucursal. Vuelve a ingresar." };
+  const { tipo, acc, detalle } = p.data;
+  const texto = [acc && acc !== "No sé" ? `${acc}.` : "", detalle].filter(Boolean).join(" ") || tipo;
+  return { ok: true, reporte: agregarReporte(suc, tipo, texto) };
 }
 
 export async function avisarJefatura(): Promise<{ ok: true }> {

@@ -1,7 +1,7 @@
 import LocalApp, { type LocalData } from "@/components/local/LocalApp";
 import LocalEntry, { type Scan } from "@/components/local/LocalEntry";
 import { seed } from "@/lib/data";
-import { rt } from "@/lib/server/runtime";
+import { reportesDeLocal } from "@/components/local/server-data";
 import { getSession } from "@/lib/server/session";
 
 export const metadata = { title: "Portal del local" };
@@ -18,7 +18,7 @@ export default async function LocalPage({ searchParams }: { searchParams: Promis
       const data: LocalData = {
         suc: { n: suc.n, cod: suc.cod, marca: suc.marca, dir: mall ? `${mall.n}, ${suc.local} · ${mall.dir}, ${mall.com}` : `${suc.calle}, ${suc.com}` },
         visitas: db.visitas.filter((v) => v.suc === suc.id).sort((a, b) => b.f.localeCompare(a.f)),
-        tickets: [...db.tickets, ...rt.tickets].filter((t) => t.suc === suc.id).sort((a, b) => b.f.localeCompare(a.f) || b.id.localeCompare(a.id)),
+        reportes: [...db.reportes.filter((r) => r.suc === suc.id), ...reportesDeLocal(suc.id)].sort((a, b) => b.f.localeCompare(a.f) || b.id.localeCompare(a.id)),
         accesos: (db.inst[suc.id] ?? []).map((a) => a.n),
         personal: (db.personal[suc.id] ?? [{ n: "Camila Rojas" }])[0].n,
       };
@@ -26,7 +26,7 @@ export default async function LocalPage({ searchParams }: { searchParams: Promis
     }
   }
 
-  const code = (sp.s ?? "AM-012").toUpperCase().slice(0, 12);
+  const code = (sp.s ?? "PU-001").toUpperCase().slice(0, 12);
   const found = db.sucursales.find((s) => s.cod.toUpperCase() === code);
   const scan: Scan = !found
     ? { kind: "invalido" }

@@ -1,41 +1,64 @@
 import "server-only";
 
-/* Cuentas de demostración. Las contraseñas están visibles a propósito en la
-   pantalla de login (cuentas de demostración); en producción vienen de SQL
-   Server como hash (bcrypt/scrypt), nunca en claro. */
+/* Directorio de cuentas. El tipo de cuenta (equipo DMC → panel, cliente → portal)
+   lo decide el servidor a partir del correo y de este directorio; el navegador
+   nunca lo elige. Solo se guardan hashes scrypt (ver lib/server/password.ts). */
 export type Surface = "panel" | "portal";
-export type AcctStatus = "ok" | "primer" | "bloqueado" | "inactivo";
+export type AcctTipo = "equipo" | "cliente";
+export type AcctStatus = "ok" | "inactivo" | "bloqueado";
 export type Acct = {
-  email: string; pass: string; name: string; role: string; status: AcctStatus; mfa: boolean; caso: string;
-  rol?: string; perfil?: "admin" | "zona" | "marca";
+  email: string;
+  name: string;
+  role: string;
+  tipo: AcctTipo;
+  passHash: string;
+  status: AcctStatus;
+  /** rol interno (solo equipo) */
+  rol?: string;
+  /** perfil dentro del cliente (solo cliente) */
+  perfil?: "admin" | "zona" | "marca";
+  /** cliente al que pertenece (solo cliente) */
+  clienteId?: string;
 };
 
-export const PANEL_ACCTS: Acct[] = [
-  { email: "pcontreras@grupodmc.cl", pass: "Dmc-2026", name: "Paula Contreras", role: "Administradora", rol: "r1", status: "ok", mfa: false, caso: "Administradora" },
-  { email: "crojas@grupodmc.cl", pass: "Dmc-2026", name: "Camilo Rojas", role: "Coordinador de operaciones", rol: "r2", status: "ok", mfa: true, caso: "Coordinador · 2 pasos" },
-  { email: "cmorales@grupodmc.cl", pass: "Dmc-2026", name: "Cristián Morales", role: "Técnico", rol: "r3", status: "ok", mfa: false, caso: "Técnico" },
-  { email: "dsoto@grupodmc.cl", pass: "Dmc-2026", name: "Daniela Soto", role: "Comercial", rol: "r4", status: "ok", mfa: false, caso: "Comercial" },
-  { email: "tvera@grupodmc.cl", pass: "Temporal-01", name: "Tomás Vera", role: "Coordinador de operaciones", rol: "r2", status: "primer", mfa: false, caso: "Primer ingreso" },
-  { email: "mibanez@grupodmc.cl", pass: "Dmc-2026", name: "Marcelo Ibáñez", role: "Comercial", rol: "r4", status: "bloqueado", mfa: false, caso: "Bloqueada" },
-  { email: "apizarro@grupodmc.cl", pass: "Dmc-2026", name: "Andrea Pizarro", role: "Técnico", rol: "r3", status: "inactivo", mfa: false, caso: "Desactivada" },
+export const DMC_DOMAIN = "grupodmc.cl";
+
+const ACCTS: Acct[] = [
+  {
+    email: "pcontreras@grupodmc.cl", name: "Paula Contreras", role: "Administradora", tipo: "equipo", rol: "r1", status: "ok",
+    passHash: "scrypt:au9UCJ8Qdn7uQxC1qHs13Q:55VKODB8Mf1vFGgy_KPGh2ZykHxNhE6ehl_O4bMl5hEiHGEVFPJ9dCzOMq8RIjgT_AQF4TE2AUoUZ7FOzXjCdg",
+  },
+  {
+    email: "sayala@retailandes.cl", name: "Sofia Ayala", role: "Administrador cliente", tipo: "cliente", perfil: "admin", clienteId: "c1", status: "ok",
+    passHash: "scrypt:GAzZ3CFGtOiaMaZ03McqPQ:U_OpYS21sb_DkBm85wdQBI2brQmDS4DTeChKJZehtlwvMEzvEK2hGmuEE0XAa4pbAVcRr1N1qUY4nVn9zu0BTg",
+  },
 ];
 
-export const PORTAL_ACCTS: Acct[] = [
-  { email: "mjfuentes@retailandes.cl", pass: "Andes-2026", name: "María José Fuentes", role: "Administrador cliente", perfil: "admin", status: "ok", mfa: true, caso: "Administrador · 2 pasos" },
-  { email: "rsaavedra@retailandes.cl", pass: "Andes-2026", name: "Rodrigo Saavedra", role: "Supervisor Zona Norte", perfil: "zona", status: "ok", mfa: false, caso: "Supervisor zona" },
-  { email: "ilagos@retailandes.cl", pass: "Andes-2026", name: "Ignacio Lagos", role: "Supervisor Andes Home", perfil: "marca", status: "ok", mfa: false, caso: "Supervisor marca" },
-  { email: "nparedes@retailandes.cl", pass: "Temporal-01", name: "Natalia Paredes", role: "Supervisor Zona Norte", perfil: "zona", status: "primer", mfa: false, caso: "Primer ingreso" },
-  { email: "cmunoz@retailandes.cl", pass: "Andes-2026", name: "Camila Muñoz", role: "Supervisor Andes Home", perfil: "marca", status: "bloqueado", mfa: false, caso: "Bloqueada" },
-  { email: "fgarrido@retailandes.cl", pass: "Andes-2026", name: "Felipe Garrido", role: "Supervisor Zona Norte", perfil: "zona", status: "inactivo", mfa: false, caso: "Desactivada" },
-];
+const norm = (email: string) => email.trim().toLowerCase();
+const domainOf = (email: string) => norm(email).split("@")[1] ?? "";
 
-export const accountsOf = (s: Surface): Acct[] => (s === "panel" ? PANEL_ACCTS : PORTAL_ACCTS);
+/** Equipo solo con dominio DMC; cliente solo fuera del dominio DMC y asociado a un cliente. */
+const consistent = (a: Acct) =>
+  a.tipo === "equipo" ? domainOf(a.email) === DMC_DOMAIN : domainOf(a.email) !== DMC_DOMAIN && !!a.clienteId;
+
+/** Busca la cuenta por correo. Una cuenta inconsistente se trata como inexistente.
+    Cuando se conecte la BD, esta es la ÚNICA función a reemplazar por la consulta SQL (lib/db.ts). */
+export function findAcctByEmail(email: string): Acct | undefined {
+  const e = norm(email);
+  const a = ACCTS.find((x) => x.email.toLowerCase() === e);
+  return a && consistent(a) ? a : undefined;
+}
+
+export const surfaceOf = (a: Acct): Surface => (a.tipo === "equipo" ? "panel" : "portal");
+
+/** Cuenta del correo, solo si pertenece a esa superficie. */
 export const findAcct = (s: Surface, email: string): Acct | undefined => {
-  const e = email.trim().toLowerCase();
-  return accountsOf(s).find((a) => a.email.toLowerCase() === e);
+  const a = findAcctByEmail(email);
+  return a && surfaceOf(a) === s ? a : undefined;
 };
 
-export type PublicAcct = { email: string; name: string; status: AcctStatus; mfa: boolean; caso: string; hint: string };
-/** Cuentas para los chips de demostración (incluye la clave de prueba a propósito). */
-export const publicAccts = (s: Surface): PublicAcct[] =>
-  accountsOf(s).map((a) => ({ email: a.email, name: a.name, status: a.status, mfa: a.mfa, caso: a.caso, hint: a.pass }));
+/** Cuenta que puede tener sesión abierta: existe en esa superficie y está activa. */
+export const activeAcct = (s: Surface, email: string): Acct | undefined => {
+  const a = findAcct(s, email);
+  return a?.status === "ok" ? a : undefined;
+};

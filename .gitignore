@@ -27,6 +27,7 @@ auth.json
 .yarnrc.yml
 .netrc
 .htpasswd
+USUARIOS-PRUEBA.txt
 .aws/
 .azure/
 .gcloud/
@@ -72,6 +73,8 @@ id_ecdsa*
 dump/
 backups/
 data/
+# lib/data/ es código (capa de acceso a datos), no un volcado
+!/lib/data/
 exports/
 uploads/
 *.csv
@@ -104,6 +107,7 @@ bower_components/
 # NEXT.JS / BUILD
 # =====================================================
 .next/
+/.next-e2e/
 out/
 build/
 dist/
