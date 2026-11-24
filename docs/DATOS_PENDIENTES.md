@@ -1,5 +1,9 @@
 # Datos pendientes de confirmar
 
+> **Actualización:** la base es `DMC_Core`. El portal lee solo vistas `portal.v_*` (copia 1:1 de `dmc`
+> en el esquema `tecnico`). La especificación vigente de cada vista está en
+> [`portal-vistas.md`](portal-vistas.md); las secciones 0 a 2 de abajo quedan como historia del análisis.
+
 Para que `DATA_SOURCE=db` funcione hay que completar `lib/data/portal/mapeo.ts`. Hoy **todas** las
 secciones están en `null`: no se inventó ningún nombre de tabla ni de columna. Mientras falte una
 sección obligatoria, el portal muestra «El portal todavía no tiene sus datos configurados» con la

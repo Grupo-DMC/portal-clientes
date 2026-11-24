@@ -2,6 +2,8 @@ import { MESES, daysFrom, longDate, parseDMY, today } from '@/lib/pcliente/forma
 
 /** Días restantes del plan de garantía y avance del último año. */
 export default function WarrantyPlan({ vigenteHasta, porVencer }) {
+  // Sin fecha de plan (p. ej. la base no tiene garantías registradas) no hay nada que dibujar.
+  if (!vigenteHasta) return <div className="plan"><p className="plan-date">Sin plan de garantía registrado.</p></div>;
   const end = parseDMY(vigenteHasta);
   const left = daysFrom(end);
   const vigente = left >= 0;

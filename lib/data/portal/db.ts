@@ -1,27 +1,39 @@
 import "server-only";
-import type {
-  ContextoPortal,
-  CuentaLocalDto,
-  PortalDatos,
-  PreferenciasAvisosDto,
-  TicketPortalDto,
-} from "@/lib/contratos/portal";
+import type { ContextoPortal, CuentaLocalDto, PortalDatos, PreferenciasAvisosDto, TicketPortalDto } from "@/lib/contratos/portal";
 import { log } from "@/lib/log";
-import { F_FECHA, F_FECHA_DMY, F_FECHA_HORA_DMY, F_HORA, consultaCon, ident, numONull, sql } from "@/lib/data/sql";
-import { resumirMarcas, resumirVisitas, ticketsPorSucursal } from "./calculos";
+import { F_FECHA, F_FECHA_DMY, F_FECHA_HORA_DMY, F_HORA, consultaDeCliente, ident, idCliente, numONull } from "@/lib/data/sql";
+import {
+  estadoSucursal,
+  garantiaVigente,
+  resumirGarantias,
+  resumirMarcas,
+  resumirVisitas,
+  ticketsPorSucursal,
+} from "./calculos";
 import { DatosPendientesError } from "./errores";
 import type { FuentePortal } from "./fuente";
-import { MAPEO, PRIORIDAD_ALTA, SECCIONES_OBLIGATORIAS, TICKET_ABIERTO, type Campo, type MapeoPortal, type MapeoSeccion } from "./mapeo";
+import {
+  COLUMNA_CLIENTE,
+  DIAS_GARANTIA_POR_VENCER,
+  MAPEO,
+  PRIORIDAD_ALTA,
+  SECCIONES_OBLIGATORIAS,
+  TICKET_ABIERTO,
+  type Campo,
+  type MapeoPortal,
+  type MapeoSeccion,
+} from "./mapeo";
 
-// DATA_SOURCE=db: SQL Server, SOLO LECTURA. Las consultas se arman desde el
-// mapeo de lib/data/portal/mapeo.ts (que hoy está vacío a propósito: ver
-// docs/DATOS_PENDIENTES.md) y pasan todas por consultaCon, que rechaza lo que
-// no sea un SELECT.
+// DATA_SOURCE=db: DMC_Core, SOLO LECTURA y SOLO vistas portal.v_* (ver
+// docs/portal-vistas.md). Cada consulta:
+//   1. fija el cliente de la sesión con sp_set_session_context (RLS), y
+//   2. filtra además por cliente_id = @cliente.
+// Ambas cosas las garantiza consultaDeCliente (lib/data/sql.ts) + leer().
 
 /** Tope de filas por sección: el portal no pagina todavía. */
 const MAX_FILAS = 5000;
 
-/** Valores neutros para las secciones opcionales que aún no tienen mapeo. */
+/** Valores neutros mientras las preferencias de avisos no tengan origen en la base. */
 const PREFERENCIAS_POR_DEFECTO: PreferenciasAvisosDto = {
   tipos: Object.fromEntries(
     ["ticket_nuevo", "ticket_cerrado", "visita_programada", "visita_realizada", "reporte_nuevo", "garantia", "calibracion"].map((t) => [
@@ -34,7 +46,7 @@ const PREFERENCIAS_POR_DEFECTO: PreferenciasAvisosDto = {
 };
 
 function columnaSql(campo: Campo): string {
-  const base = "col" in campo ? ident(campo.col) : `(${campo.expr})`;
+  const base = ident(campo.col);
   switch (campo.tipo) {
     case "fecha":
       return F_FECHA_DMY(base);
@@ -56,14 +68,26 @@ function convertir(valor: unknown, campo: Campo): unknown {
   return String(valor);
 }
 
-/** Lee una sección según su mapeo, ya acotada al cliente o al usuario de la sesión. */
+/** El cliente de la sesión en la base. Sin él no se consulta nada. */
+function clienteDe(ctx: ContextoPortal): number {
+  if (ctx.clienteIdBd === null) {
+    throw new Error(
+      `La cuenta ${ctx.email} no tiene clienteIdBd (clientes.cliente.id): no se puede filtrar la base por cliente. Ver lib/server/accounts.ts.`
+    );
+  }
+  return idCliente(ctx.clienteIdBd);
+}
+
+/** Lee una sección según su mapeo: contexto de sesión + WHERE cliente_id = @cliente. */
 async function leer<C extends string>(m: MapeoSeccion<C>, ctx: ContextoPortal): Promise<Record<C, unknown>[]> {
+  const cliente = clienteDe(ctx);
   const campos = Object.entries(m.campos) as [C, Campo][];
   const columnas = campos.map(([nombre, campo]) => `${columnaSql(campo)} AS ${ident(nombre)}`).join(", ");
+  const donde = m.donde ? ` AND (${m.donde})` : "";
   const orden = m.orden ? ` ORDER BY ${ident(m.orden.col)} ${m.orden.dir === "DESC" ? "DESC" : "ASC"}` : "";
-  const filas = await consultaCon<Record<C, unknown>>(
-    `SELECT TOP (${MAX_FILAS}) ${columnas} FROM ${ident(m.tabla)} WHERE ${ident(m.filtro.col)} = @filtro${orden}`,
-    [["filtro", sql.NVarChar(200), m.filtro.por === "cliente" ? ctx.clienteId : ctx.email]]
+  const filas = await consultaDeCliente<Record<C, unknown>>(
+    cliente,
+    `SELECT TOP (${MAX_FILAS}) ${columnas} FROM ${ident(m.tabla)} WHERE ${ident(COLUMNA_CLIENTE)} = @__cliente_id${donde}${orden}`
   );
   return filas.map((fila) => {
     const salida = {} as Record<C, unknown>;
@@ -76,14 +100,11 @@ async function leer<C extends string>(m: MapeoSeccion<C>, ctx: ContextoPortal): 
   });
 }
 
-/** Lee una sección opcional: sin mapeo devuelve [] y lo deja anotado en el log. */
-async function leerOpcional<K extends keyof MapeoPortal>(
-  seccion: K,
-  ctx: ContextoPortal
-): Promise<Record<string, unknown>[]> {
+/** Lee una sección opcional: sin vista devuelve [] y lo deja anotado en el log. */
+async function leerOpcional<K extends keyof MapeoPortal>(seccion: K, ctx: ContextoPortal): Promise<Record<string, unknown>[]> {
   const m = MAPEO[seccion] as MapeoSeccion<string> | null;
   if (!m) {
-    log.warn("portal.db", { seccion, aviso: "sección sin mapeo: se entrega vacía" });
+    log.warn("portal.db", { seccion, aviso: "sección sin vista en portal: se entrega vacía" });
     return [];
   }
   return leer(m, ctx);
@@ -116,48 +137,43 @@ export const fuenteDb: FuentePortal = {
   nombre: "db",
 
   async cargarPortal(ctx) {
-    // Todas las que faltan de una vez, para que el mensaje sea completo.
     const faltan = SECCIONES_OBLIGATORIAS.filter((s) => !MAPEO[s]);
     if (faltan.length) throw new DatosPendientesError(faltan);
 
-    const [perfiles, clientes, sucursales, visitas, garantias, cuentas, reportes, usuarios, notificaciones, tickets] =
-      await Promise.all([
-        leer(obligatoria("perfil"), ctx),
-        leer(obligatoria("cliente"), ctx),
-        leer(obligatoria("sucursales"), ctx),
-        leer(obligatoria("visitas"), ctx),
-        leer(obligatoria("garantias"), ctx),
-        leerOpcional("cuentasLocales", ctx),
-        leerOpcional("reportes", ctx),
-        leerOpcional("usuarios", ctx),
-        leerOpcional("notificaciones", ctx),
-        leerTickets(ctx),
-      ]);
+    // Las consultas van en serie: cada una toma su conexión (reiniciada) y fija
+    // su contexto; en paralelo pedirían varias conexiones del pool a la vez.
+    const clientes = await leer(obligatoria("cliente"), ctx);
+    const sucursales = await leer(obligatoria("sucursales"), ctx);
+    const visitas = await leer(obligatoria("visitas"), ctx);
+    const cuentas = await leerOpcional("cuentasLocales", ctx);
+    const reportes = await leerOpcional("reportes", ctx);
+    const usuarios = await leerOpcional("usuarios", ctx);
+    const notificaciones = await leerOpcional("notificaciones", ctx);
+    const tickets = await leerTickets(ctx);
 
-    const perfil = perfiles[0];
     const cliente = clientes[0];
-    const garantia = garantias[0];
-    if (!perfil || !cliente || !garantia) {
-      throw new Error("La base no devolvió el perfil, el cliente o la garantía de la sesión. Revisa el filtro del mapeo.");
-    }
+    if (!cliente) throw new Error("portal.v_cliente no devolvió el cliente de la sesión. Revisa clienteIdBd y la vista.");
 
     const abiertosPorSucursal = ticketsPorSucursal(tickets, TICKET_ABIERTO);
-    const sucursalesDto = sucursales.map((s) => ({
-      codigo: textoONull(s.codigo),
-      nombre: texto(s.nombre),
-      marca: texto(s.marca),
-      mall: textoONull(s.mall),
-      local: numONull(s.local),
-      comuna: texto(s.comuna),
-      region: texto(s.region),
-      accesos: numONull(s.accesos),
-      equipos: numONull(s.equipos),
-      garantia: textoONull(s.garantia),
-      tickets: abiertosPorSucursal.get(texto(s.nombre)) ?? 0,
-      estado: texto(s.estado),
-      // Las zonas del cliente no tienen tabla conocida (docs/DATOS_PENDIENTES.md).
-      zona: null,
-    }));
+    const sucursalesDto = sucursales.map((s) => {
+      const vence = textoONull(s.garantiaVence);
+      return {
+        codigo: textoONull(s.codigo),
+        nombre: texto(s.nombre),
+        marca: texto(s.marca),
+        mall: textoONull(s.mall),
+        // Sin origen en DMC_Core (docs/portal-vistas.md, «Sin origen»).
+        local: null,
+        accesos: null,
+        equipos: null,
+        comuna: texto(s.comuna),
+        region: texto(s.region),
+        garantia: garantiaVigente(vence) ? "vigente" : null,
+        tickets: abiertosPorSucursal.get(texto(s.nombre)) ?? 0,
+        estado: estadoSucursal(numONull(s.problemasAbiertos)),
+        zona: null,
+      };
+    });
 
     const cuentasDto: Record<string, CuentaLocalDto> = {};
     for (const c of cuentas) {
@@ -165,15 +181,8 @@ export const fuenteDb: FuentePortal = {
     }
 
     const datos: PortalDatos = {
-      usuario: {
-        id: numONull(perfil.id) ?? 0,
-        nombre: texto(perfil.nombre),
-        rol: texto(perfil.rol),
-        correo: texto(perfil.correo),
-        cargo: texto(perfil.cargo),
-        telefono: texto(perfil.telefono),
-        foto: null,
-      },
+      // La base del portal no expone usuarios: el perfil sale de la cuenta de la sesión.
+      usuario: { id: 0, nombre: ctx.nombre, rol: ctx.rol, correo: ctx.email, cargo: "", telefono: "", foto: null },
       cliente: { nombre: texto(cliente.nombre), razonSocial: texto(cliente.razonSocial), rut: texto(cliente.rut), logo: null },
       sucursalesTotal: sucursalesDto.length,
       marcas: resumirMarcas(sucursalesDto),
@@ -181,11 +190,14 @@ export const fuenteDb: FuentePortal = {
         abiertos: tickets.filter((t) => t.estado === TICKET_ABIERTO).length,
         altaPrioridad: tickets.filter((t) => t.estado === TICKET_ABIERTO && PRIORIDAD_ALTA.includes(t.prioridad)).length,
       },
-      garantias: { porVencer: numONull(garantia.porVencer) ?? 0, planVigenteHasta: texto(garantia.planVigenteHasta) },
+      garantias: resumirGarantias(
+        sucursales.map((s) => textoONull(s.garantiaVence)),
+        DIAS_GARANTIA_POR_VENCER
+      ),
       visitasResumen: resumirVisitas(visitas.map((v) => texto(v.fechaISO))),
       sucursales: sucursalesDto,
       visitasTotal: visitas.length,
-      // El detalle del acta (trabajos, fotos, firma) sale de varias tablas: pendiente.
+      // El detalle del acta (v_visita_ejecucion, v_visita_trabajo, fotos, firma) se carga aparte: pendiente.
       visitas: visitas.map((v) => ({
         folio: texto(v.folio),
         fecha: texto(v.fecha),
@@ -204,7 +216,6 @@ export const fuenteDb: FuentePortal = {
         estado: texto(r.estado),
         prioridad: r.prioridadNivel ? { nivel: texto(r.prioridadNivel), motivo: texto(r.prioridadMotivo) } : null,
       })),
-      // Locales asignados y permisos extra son listas: pendientes de su tabla.
       usuarios: usuarios.map((u) => ({
         id: numONull(u.id) ?? 0,
         nombre: texto(u.nombre),
@@ -260,7 +271,7 @@ export const fuenteDb: FuentePortal = {
   },
 };
 
-/** Cuántas secciones del mapeo están confirmadas, para /api/salud. */
+/** Qué secciones tienen vista, para /api/salud. */
 export function estadoDelMapeo(): { confirmadas: string[]; pendientes: string[] } {
   const secciones = Object.keys(MAPEO) as (keyof MapeoPortal)[];
   return {
