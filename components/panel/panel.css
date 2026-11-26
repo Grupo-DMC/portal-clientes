@@ -1,0 +1,108 @@
+/* Panel interno. Usa los colores y piezas de portal.css; esto agrega solo lo propio del panel.
+   Anidado en .pc para ganarle al «all:revert» del portal (ver su nota al inicio). */
+.pc{
+  /* Encabezado de página con «volver» y acciones */
+  .pn-head{align-items:flex-end}
+  .pn-volver{display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;color:var(--muted);font-size:.875rem;font-weight:600;text-decoration:none}
+  .pn-volver svg.i{width:16px;height:16px}
+  .pn-volver:hover{color:var(--purple)}
+  .pn-head-extra{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+  .panel h2 .pn-n{margin-left:10px;padding:1px 8px;border-radius:7px;background:var(--canvas);color:var(--muted);font-family:var(--font-body);font-size:.8125rem;font-weight:600;vertical-align:middle}
+
+  /* Datos «etiqueta: valor» */
+  .pn-datos{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px 24px;margin:0}
+  .pn-datos div{min-width:0}
+  .pn-datos dt{color:var(--muted);font-size:.75rem;font-weight:600;margin:0 0 2px}
+  .pn-datos dd{margin:0;overflow-wrap:anywhere}
+  .pn-vacio{color:#A39BA9}
+  .pn-texto{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
+
+  /* Rejillas */
+  .pn-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
+  .pn-grid-main{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:24px;align-items:start}
+  .pn-pila{display:grid;gap:24px;min-width:0}
+
+  /* KPIs enlazados */
+  .pn-kpi-link{color:inherit;text-decoration:none;transition:background .15s}
+  .pn-kpi-link:hover{background:#FBF8FC}
+  .pn-kpi-link:hover .kpi-label{color:var(--purple)}
+
+  /* Lista */
+  .pn-lista{display:grid;gap:14px;min-width:0}
+  .pn-barra{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px}
+  .pn-filtro select.input{height:36px;padding:0 32px 0 10px;width:auto;max-width:240px;font-size:.875rem;color:var(--ink)}
+  .pn-cuenta{margin-left:auto}
+  .pn-csv{height:36px}
+  .pn-csv svg.i{width:16px;height:16px}
+  .pn-table{min-width:720px}
+  .pn-table th button{gap:2px}
+  .pn-table th .pn-sortable{opacity:.35}
+  .pn-table th button:hover .pn-sortable{opacity:1}
+  .pn-table th .pn-up{transform:rotate(180deg)}
+  .pn-table td{padding:11px 12px;font-size:.875rem}
+  .pn-link{color:var(--ink);font-weight:600;text-decoration:none}
+  .pn-link:hover{color:var(--purple);text-decoration:underline;text-underline-offset:3px}
+  .pn-sub{display:block;color:var(--muted);font-size:.75rem;font-weight:400;margin-top:1px}
+  .pn-larga{min-width:220px;max-width:420px}
+  .pn-sin{display:grid;justify-items:center;gap:6px;padding:28px 12px;text-align:center;color:var(--muted)}
+  .pn-sin p{margin:0}
+  .pn-pag{display:flex;align-items:center;justify-content:center;gap:16px;padding-top:4px}
+
+  /* Gráfico de barras (visitas por mes) */
+  .pn-chart{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;align-items:end;height:180px;margin:0;padding:0;list-style:none}
+  .pn-chart li{display:grid;grid-template-rows:auto 1fr auto;gap:4px;height:100%;text-align:center;min-width:0}
+  .pn-chart .pn-bar-n{font-size:.75rem;color:var(--muted)}
+  .pn-chart .pn-bar{align-self:end;border-radius:6px 6px 2px 2px;background:var(--lilac);min-height:2px}
+  .pn-chart li.is-now .pn-bar{background:var(--purple)}
+  .pn-chart li.is-now .pn-bar-n{color:var(--purple);font-weight:700}
+  .pn-chart .pn-bar-m{font-size:.75rem;color:var(--muted)}
+
+  /* Listas compactas (próximas visitas, problemas, actividad) */
+  .pn-mini{list-style:none;margin:0;padding:0;display:grid}
+  .pn-mini li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .pn-mini li:last-child{border-bottom:0}
+  .pn-mini b{font-weight:600;font-size:.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pn-mini a{color:inherit;text-decoration:none}
+  .pn-mini a:hover b{color:var(--purple)}
+  .pn-mini .pn-mini-sub{grid-column:1 / -1;color:var(--muted);font-size:.8125rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pn-mini .pn-mini-r{color:var(--muted);font-size:.8125rem;white-space:nowrap;text-align:right}
+  .pn-mini-foot{display:inline-flex;align-items:center;gap:4px;margin-top:12px;color:var(--purple);font-weight:600;font-size:.875rem;text-decoration:none}
+  .pn-mini-foot svg.i{width:16px;height:16px}
+  .pn-mini-foot:hover{text-decoration:underline;text-underline-offset:3px}
+
+  /* Índice de secciones (catálogos, usuarios, auditoría) */
+  .pn-indice{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+  .pn-indice a{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font-size:.8125rem;font-weight:600;text-decoration:none}
+  .pn-indice a:hover{border-color:var(--lilac);color:var(--purple)}
+  .pn-indice .num{color:var(--muted);font-weight:500}
+  .pn-ancla{scroll-margin-top:80px}
+
+  /* Permisos de un rol */
+  .pn-permisos{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;padding:0;list-style:none}
+  .pn-permisos li{padding:2px 8px;border-radius:6px;background:var(--canvas);font-size:.75rem;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+  .pn-roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .pn-rol{padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+  .pn-rol h3{margin:0;font-family:var(--font-display);font-weight:500;font-size:1.125rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pn-rol p{margin:4px 0 0;color:var(--muted);font-size:.8125rem}
+
+  /* Nota de solo lectura y avisos */
+  .pn-nota{display:flex;gap:10px;align-items:flex-start;margin:0;padding:12px 16px;border-radius:12px;background:var(--lilac-soft);color:var(--purple-deep);font-size:.875rem;line-height:1.5}
+  .pn-nota svg.i{color:var(--purple);margin-top:1px}
+  .pn-nota.is-amber{background:var(--amber-soft);color:var(--amber)}
+  .pn-nota.is-amber svg.i{color:var(--amber)}
+
+  .pn-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .pn-aparte{margin:14px 0 0}
+  .pn-subtitulo{margin:20px 0 6px;color:var(--muted);font-size:.8125rem;font-weight:600}
+
+  @media (max-width:1100px){
+    .pn-grid-main,.pn-grid2{grid-template-columns:minmax(0,1fr)}
+  }
+  @media (max-width:640px){
+    .pn-chart{gap:4px;height:150px}
+    .pn-chart .pn-bar-n{font-size:.6875rem}
+    .pn-cuenta{margin-left:0;width:100%}
+    .pn-filtro,.pn-filtro select.input{width:100%;max-width:none}
+  }
+}

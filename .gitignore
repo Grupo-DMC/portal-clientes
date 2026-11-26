@@ -67,6 +67,8 @@ id_ecdsa*
 *.db-journal
 *.sql
 !supabase/migrations/*.sql
+# Migraciones del esquema (formato de sys_tecnicos): se versionan. Sin datos de clientes.
+!sql/migracion-*.sql
 *.dump
 *.bak
 *.backup

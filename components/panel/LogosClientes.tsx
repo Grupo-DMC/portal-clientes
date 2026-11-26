@@ -98,7 +98,7 @@ export default function LogosClientes({ clientes, tablaLista }: { clientes: Clie
       {!tablaLista && (
         <p className="lc-aviso" role="status">
           Todavía no se pueden guardar logos: falta crear la tabla <code>clientes.cliente_logo</code> en DMC_Core
-          (<code>sql/2026-11-24_cliente_logo.sql</code>). Mientras tanto se muestran los logos cargados como archivo.
+          (<code>sql/migracion-001-logo-del-cliente.sql</code>). Mientras tanto se muestran los logos cargados como archivo.
         </p>
       )}
 
