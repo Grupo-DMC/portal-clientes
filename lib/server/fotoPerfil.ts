@@ -3,14 +3,14 @@ import sql from "mssql";
 import { getPoolEscritura } from "@/lib/db/pool";
 
 // Foto de perfil de la cuenta del portal: seguridad.usuario_cliente_foto
-// (sql/2026-11-24_usuario_cliente_foto.sql). Como las demás escrituras de la
+// (sql/migracion-002-foto-de-perfil-del-portal.sql). Como las demás escrituras de la
 // app, solo en seguridad.* y con texto fijo parametrizado. La cuenta sale
 // SIEMPRE de la sesión (usuario_cliente.id), nunca del formulario.
 
 /** La tabla todavía no existe en la base (falta aplicar el script). */
 export class FotoNoDisponible extends Error {
   constructor() {
-    super("Falta crear seguridad.usuario_cliente_foto (sql/2026-11-24_usuario_cliente_foto.sql).");
+    super("Falta crear seguridad.usuario_cliente_foto (sql/migracion-002-foto-de-perfil-del-portal.sql).");
     this.name = "FotoNoDisponible";
   }
 }

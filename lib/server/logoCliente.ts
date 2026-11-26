@@ -2,7 +2,7 @@ import "server-only";
 import sql from "mssql";
 import { getPoolEscritura } from "@/lib/db/pool";
 
-// Logo de cada cliente: clientes.cliente_logo (sql/2026-11-24_cliente_logo.sql).
+// Logo de cada cliente: clientes.cliente_logo (sql/migracion-001-logo-del-cliente.sql).
 // Lo escribe SOLO el panel interno (equipo DMC con rol de panel); el portal
 // solo lee el logo de su propio cliente (el de la sesión).
 //
@@ -11,7 +11,7 @@ import { getPoolEscritura } from "@/lib/db/pool";
 
 export class LogoNoDisponible extends Error {
   constructor() {
-    super("Falta crear clientes.cliente_logo (sql/2026-11-24_cliente_logo.sql).");
+    super("Falta crear clientes.cliente_logo (sql/migracion-001-logo-del-cliente.sql).");
     this.name = "LogoNoDisponible";
   }
 }
